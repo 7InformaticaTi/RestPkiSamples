@@ -2,7 +2,8 @@ var express = require('express');
 var request = require('request');
 var fs = require('fs');
 var uuid = require('node-uuid');
-var restPki = require('../lacuna-restpki');
+var restPki = require('../lacuna-restpki').RestPki,
+    standardSecurityContexts = restPki.StandardSecurityContexts;
 var client = require('../restpki-client');
 
 var router = express.Router();
@@ -16,28 +17,12 @@ var appRoot = process.cwd();
  */
 router.get('/', function (req, res, next) {
 
-    // Request to be sent to REST PKI
-    var restRequest = {
-        // Set a SecurityContext to be used to determine trust in the certificate chain for authentication
-        securityContextId: restPki.standardSecurityContexts.pkiBrazil,
-    };
+    var auth = client.getRestPkiClient().getAuthentication();
 
-    // Call the action POST Api/Authentications on REST PKI, which initiates the authentication. 
-    request.post(client.endpoint + 'Api/Authentications', {
+    auth.startWithWebPki(standardSecurityContexts.pkiBrazil, function(err, response) {
 
-        json: true,
-        headers: { 'Authorization': 'Bearer ' + client.accessToken },
-        body: restRequest
-
-    }, function (err, restRes, body) {
-
-        if (restPki.checkResponse(err, restRes, body, next)) {
-
-            // This operation yields the token, a 43-character case-sensitive URL-safe string, which identifies this signature process.
-            // We'll use this value to call the signWithRestPki() method on the Web PKI component (see view 'pades-signature') and also
-            // to complete the signature after the form is submitted. This should not be mistaken with the API access token.
-            var token = restRes.body.token;
-
+        if (!err) {
+            var token = response.token;
             // The token acquired can only be used for a single signature attempt. In order to retry the signature it is
             // necessary to get a new token. This can be a problem if the user uses the back button of the browser, since the
             // browser might show a cached page that we rendered previously, with a now stale token. To prevent this from happening,
@@ -51,8 +36,9 @@ router.get('/', function (req, res, next) {
             res.render('authentication', {
                 token: token,
             });
+        } else {
+            next(err);
         }
-
     });
 });
 
@@ -62,26 +48,33 @@ router.get('/', function (req, res, next) {
  * This route receives the form submission from the view 'authentication'. We'll call REST PKI to complete the authentication.
  */
 router.post('/', function (req, res, next) {
-
     // Retrieve the token from the URL
     var token = req.body.token;
 
-    // Call the action POST Api/Authentications/{token}/Finalize on REST PKI, which finalizes the authentication process and returns the certificate validation results
-    request.post(client.endpoint + 'Api/Authentications/' + token + '/Finalize', {
+    var auth = client.getRestPkiClient().getAuthentication();
 
-        json: true,
-        headers: { 'Authorization': 'Bearer ' + client.accessToken }
+    auth.completeWithWebPki(token, function(err, response) {
 
-    }, function (err, restRes, body) {
-
-        if (restPki.checkResponse(err, restRes, body, next)) {
+        if (!err) {
+            var vr = response;
+            var userCert;
+            if (vr.isValid()) {
+                // At this point, you have assurance that the certificate is valid according to the SecurityContext specified on the
+                // file authentication.php and that the user is indeed the certificate's subject. Now, you'd typically query your
+                // database for a user that matches one of the certificate's fields, such as $userCert->emailAddress or
+                // $userCert->pkiBrazil->cpf (the actual field to be used as key depends on your application's business logic) and
+                // set the user as authenticated with whatever web security framework your application uses. For demonstration
+                // purposes, we'll just render the user's certificate information.
+                userCert = auth.getCertificate();
+            }
 
             res.render('authentication-complete', {
-                certificate: restRes.body.certificate,
-				validationResults: restRes.body.validationResults,
-				isValid: restRes.body.validationResults.errors == null || restRes.body.validationResults.errors.length == 0
+                userCert: userCert,
+                validationResults: vr.__toString(),
+                isValid: vr.isValid()
             });
-
+        } else {
+            next(err);
         }
     });
 });
