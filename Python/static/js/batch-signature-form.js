@@ -205,8 +205,8 @@ var batchSignatureForm = (function() {
 
     // -------------------------------------------------------------------------------------------------
     // Function that performs the first step described above for each document, which is the call
-    // batch-signature-start.php in order to start the signature and get the token associated with the
-    // signature process.
+    // the url "batch-signature/start" in order to start the signature and get the token associated
+    // with the signature process.
     //
     // This function is called by the Queue.process function, taking documents from the "start" queue.
     // Once we're done, we'll call the "done" callback passing the document, and the Queue.process
@@ -259,7 +259,7 @@ var batchSignatureForm = (function() {
 
     // -------------------------------------------------------------------------------------------------
     // Function that performs the third step described above for each document, which is the call
-    // batch-signature-complete.php in order to complete the signature.
+    // the url "batch-signature/complete" in order to complete the signature.
     //
     // This function is called by the Queue.process function, taking documents from the "complete" queue.
     // Once we're done, we'll call the "done" callback passing the document. Once all documents are

@@ -96,8 +96,8 @@ def start():
 
     # Call the start_with_webpki() method, which initiates the signature. This yields the token, a 43-character
     # case-sensitive URL-safe string, which identifies this signature process. We'll use this value to call the
-    # signWithRestPki() method on the Web PKI component (see lacuna-web-pki-client.js javascript) and also to
-    # complete the signature after the form is submitted (see method pades_signature_action())). This should not be
+    # signWithRestPki() method on the Web PKI component (see batch-signature-form.js) and also to
+    # complete the signature after the form is submitted (see method complete()). This should not be
     # mistaken with the API access token.
     token = signature_starter.start_with_webpki()
 
@@ -107,7 +107,7 @@ def start():
 @blueprint.route('/batch-signature/complete', methods=['POST'])
 def complete():
     """
-        This file is called asynchronously via AJAX by the batch signature page for each document being signed. It
+        This function is called asynchronously via AJAX by the batch signature page for each document being signed. It
         receives the token, that identifies the signature process. We'll call REST PKI to complete this signature and
         return a JSON with the saved filename so that the page can render a link to it.
     """
