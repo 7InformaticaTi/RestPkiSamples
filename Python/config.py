@@ -5,7 +5,8 @@ from importlib import reload
 from flask import Flask
 
 from util import APPDATA_FOLDER, STATIC_FOLDER
-from views import authentication, cades_signature, download, home, pades_signature, upload, xml_signature
+from views import authentication, cades_signature, download, home, pades_signature, upload, xml_signature, \
+    batch_signature
 
 if sys.version_info[0] < 3:
     reload(sys)
@@ -31,3 +32,4 @@ app.register_blueprint(home.blueprint)
 app.register_blueprint(pades_signature.blueprint)
 app.register_blueprint(upload.blueprint)
 app.register_blueprint(xml_signature.blueprint)
+app.register_blueprint(batch_signature.blueprint)
