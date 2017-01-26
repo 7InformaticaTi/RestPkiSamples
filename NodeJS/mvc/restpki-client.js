@@ -1,7 +1,7 @@
-var restpki = require('./lacuna-restpki').RestPki,
-    RestPkiClient = restpki.RestPkiClient;
+var restPki = require('./lacuna-restpki'),
+    RestPkiClient = restPki.RestPkiClient;
 
-function getRestPkiClient(next) {
+function getRestPkiClient() {
     // ------------------------------------------------------------------------------------------------
     // PLACE YOUR API ACCESS TOKEN BELOW
     var accessToken = 'PASTE YOUR API ACCESS TOKEN HERE';
@@ -12,10 +12,12 @@ function getRestPkiClient(next) {
 
     // Throw exception if token is not set (this check is here just for the sake of newcomers, you can remove it)
     if (!accessToken || accessToken.indexOf(' API ') >= 0) {
-        throw 'The API access token was not set! Hint: to run this sample you must generate an API access token on the REST PKI website and paste it on the file routes/pades-signature.js';
+        throw new Error('The API access token was not set! Hint: to run this sample you must generate an API access token on the REST PKI website and paste it on the file routes/restpki-client.js');
     }
 
     return new RestPkiClient(restPkiUrl, accessToken);
 }
 
-module.exports = { getRestPkiClient };
+module.exports = {
+    getRestPkiClient: getRestPkiClient
+};
