@@ -398,13 +398,13 @@ var CadesSignatureFinisher = function(restPkiClient) {
 var XmlSignatureStarter = function(restPkiClient) {
 
     this._restPkiClient = restPkiClient;
-    this._xmlContent;
-    this._securityContextId;
-    this._signaturePolicyId;
-    this._signatureElementId;
-    this._signatureElementLocationXPath;
-    this._signatureElementLocationNsm;
-    this._signatureElementLocationInsertionOption;
+    this._xmlContent = null;
+    this._securityContextId = null;
+    this._signaturePolicyId = null;
+    this._signatureElementId = null;
+    this._signatureElementLocationXPath = null;
+    this._signatureElementLocationNsm = null;
+    this._signatureElementLocationInsertionOption = null;
 
     this.setXmlFileToSign = function(xmlPath) {
         this._xmlContent = fs.readFileSync(appRoot + xmlPath);
@@ -433,7 +433,7 @@ var XmlSignatureStarter = function(restPkiClient) {
     };
 
     this._verifyCommonParameters = function() {
-        if (_isNullOrEmpty(this.signaturePolicyId)) {
+        if (_isNullOrEmpty(this._signaturePolicyId)) {
             throw new Error('The signature policy was not set');
         }
     };
@@ -441,26 +441,27 @@ var XmlSignatureStarter = function(restPkiClient) {
     this._getRequest = function() {
 
         var request = {
-            'signaturePolicyId': _signaturePolicyId,
-            'securityContextId': _securityContextId,
-            'signatureElementId': _signatureElementId
+            'signaturePolicyId': this._signaturePolicyId,
+            'securityContextId': this._securityContextId,
+            'signatureElementId': this._signatureElementId
         };
 
-        if (_xmlContent != null) {
-            request['xml'] = new Buffer(_xmlContent).toString('base64'); // Base64-encoding
+        if (this._xmlContent != null) {
+            request['xml'] = new Buffer(this._xmlContent).toString('base64'); // Base64-encoding
         }
-        if (_signatureElementLocationXPath != null && _signatureElementLocationInsertionOption != null) {
+        if (this._signatureElementLocationXPath != null && this._signatureElementLocationInsertionOption != null) {
             request['signatureElementLocation'] = {
-                'xPath': _signatureElementLocationXPath,
-                'insertionOption': _signatureElementLocationInsertionOption
+                'xPath': this._signatureElementLocationXPath,
+                'insertionOption': this._signatureElementLocationInsertionOption
             };
-            if (_signatureElementLocationNsm != null) {
-                for (var key in _signatureElementLocationNsm) {
-                    if (_signatureElementLocationNsm.hasOwnProperty(key)) {
-                        request['signatureElementLocation']['namespaces'] = {
+            if (this._signatureElementLocationNsm != null) {
+                request['signatureElementLocation']['namespaces'] = [];
+                for (var key in this._signatureElementLocationNsm) {
+                    if (this._signatureElementLocationNsm.hasOwnProperty(key)) {
+                        request['signatureElementLocation']['namespaces'].push({
                             'prefix': key,
-                            'uri': _signatureElementLocationNsm[key]
-                        };
+                            'uri': this._signatureElementLocationNsm[key]
+                        });
                     }
                 }
             }
@@ -485,13 +486,15 @@ var XmlElementSignatureStarter = function(restPkiClient) {
         _idResolutionTable = idResolutionTable;
     };
 
-    this.startWithWebPki = function() {
+    this.startWithWebPkiAsync = function() {
+
+        console.log(this._signaturePolicyId);
 
         this._verifyCommonParameters();
         if (_isNullOrEmpty(this._xmlContent)) {
             throw new Error('The XML was not set');
         }
-        if (_isNullOrEmpty(this._toSignElementId)) {
+        if (_isNullOrEmpty(_toSignElementId)) {
             throw new Error('The XML element id to sign was not set');
         }
 
@@ -501,8 +504,9 @@ var XmlElementSignatureStarter = function(restPkiClient) {
             request['idResolutionTable'] = _idResolutionTable.toModel();
         }
 
+        var _restPkiClient = this._restPkiClient;
         return new Promise(function(resolve) {
-            this._restPkiClient.post('Api/XmlSignatures/XmlElementSignature', request)
+            _restPkiClient.post('Api/XmlSignatures/XmlElementSignature', request)
             .then(function(response) {
                 resolve(response.token);
             });
@@ -514,7 +518,7 @@ var FullXmlSignatureStarter = function(restPkiClient) {
     this.__proto__ = new XmlSignatureStarter(restPkiClient);
     this.__proto__.constructor = FullXmlSignatureStarter;
 
-    this.startWithWebPki = function() {
+    this.startWithWebPkiAsync = function() {
 
         this._verifyCommonParameters();
         if (_isNullOrEmpty(this._xmlContent)) {
@@ -523,8 +527,9 @@ var FullXmlSignatureStarter = function(restPkiClient) {
 
         var request = this._getRequest();
 
+        var _restPkiClient = this._restPkiClient;
         return new Promise(function(resolve) {
-            this._restPkiClient.post('Api/XmlSignatures/FullXmlSignature', request)
+            _restPkiClient.post('Api/XmlSignatures/FullXmlSignature', request)
             .then(function(response) {
                 resolve(response.token);
             });
@@ -544,7 +549,7 @@ var XmlSignatureFinisher = function(restPkiClient) {
         _token = token;
     };
 
-    this.finish = function() {
+    this.finishAsync = function() {
 
         if (_isNullOrEmpty(_token)) {
             throw new Error('The token was not set');
