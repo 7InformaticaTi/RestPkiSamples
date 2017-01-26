@@ -4,12 +4,11 @@ var fs = require('fs');
 var Promise = require('bluebird');
 var uuid = require('node-uuid');
 var restPki = require('../lacuna-restpki'),
-	PadesVisualPositioningPresets = restPki.PadesVisualPositioningPresets,
 	PadesSignatureStarter = restPki.PadesSignatureStarter,
     PadesSignatureFinisher = restPki.PadesSignatureFinisher,
+    PadesVisualPositioningPresets = restPki.PadesVisualPositioningPresets,
     StandardSignaturePolicies = restPki.StandardSignaturePolicies,
     StandardSecurityContexts = restPki.StandardSecurityContexts;
-
 var client = require('../restpki-client');
 
 var router = express.Router();

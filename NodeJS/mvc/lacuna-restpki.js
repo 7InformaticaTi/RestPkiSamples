@@ -309,7 +309,7 @@ var CadesSignatureStarter = function(restPkiClient) {
         _encapsulateContent = encapsulateContent;
     };
 
-    this.startWithWebPki = function() {
+    this.startWithWebPkiAsync = function() {
 
         if (_isNullOrEmpty(_contentToSign) && _isNullOrEmpty(_cmsToCoSign)) {
             throw new Error('The content to sign was not set and no CMS to be co-signed was given');
@@ -353,7 +353,7 @@ var CadesSignatureFinisher = function(restPkiClient) {
         _token = token;
     };
 
-    this.finish = function() {
+    this.finishAsync = function() {
 
         if (_isNullOrEmpty(_token)) {
             throw new Error('The token was not set');
