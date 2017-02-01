@@ -5,10 +5,13 @@ var Promise = require('bluebird');
 var appRoot = process.cwd();
 
 var RestPkiClient = function (endPointUrl, accessToken) {
+    var self = this;
+
     var _endPointUrl = endPointUrl;
     var _accessToken = accessToken;
 
-    this.get = function(url) {
+    self.get = function(url) {
+
         return new Promise(function(resolve, reject) {
             request.get(_endPointUrl + url, {
                 json: true,
@@ -18,13 +21,14 @@ var RestPkiClient = function (endPointUrl, accessToken) {
                 if (_checkResponse(errObj, restRes, 'GET', url)) {
                     resolve(body);
                 } else {
-                    reject(errObj.value, body);
+                    reject(errObj.value);
                 }
             });
         });
     };
 
-    this.post = function(url, data) {
+    self.post = function(url, data) {
+
         return new Promise(function(resolve, reject) {
             request.post(_endPointUrl + url, {
                 json: true,
@@ -35,13 +39,13 @@ var RestPkiClient = function (endPointUrl, accessToken) {
                 if (_checkResponse(errObj, restRes, 'POST', url)) {
                     resolve(body);
                 } else {
-                    reject(errObj.value, body);
+                    reject(errObj.value);
                 }
             });
         });
     };
 
-    this.getAuthentication = function() {
+    self.getAuthentication = function() {
         return new Authentication(this);
     };
 
@@ -60,10 +64,10 @@ var RestPkiClient = function (endPointUrl, accessToken) {
                             errObj.value = new RestPKiError(verb, url, response.code, response.detail);
                         }
                     } else {
-                        errObj.value = new RestErrError(verb, url, statusCode, response.message);
+                        errObj.value = new RestError(verb, url, statusCode, response.message);
                     }
                 } catch (error) {
-                    errObj.value = new RestErrError(verb, url, statusCode);
+                    errObj.value = new RestError(verb, url, statusCode);
                 }
 
             }
@@ -72,40 +76,46 @@ var RestPkiClient = function (endPointUrl, accessToken) {
             return true;
         }
     }
+
+    return self;
 };
 
-var RestError = function(message, verb, url) {
+var RestBaseError = function(errorName, message, verb, url) {
+    var self = new Error(message);
+    self.name = errorName;
+
     var _verb = verb;
     var _url = url;
 
-    Error.captureStackTrace(this, this.constructor);
-    this.__proto__ = new Error(message);
-    this.__proto__.constructor = RestError;
-    this.__proto__.getVerb = function() { return _verb; };
-    this.__proto__.getUrl = function() { return _url; };
+    self.getVerb = function() { return _verb; };
+    self.getUrl = function() { return _url; };
+
+    return self;
 };
 
 var RestUnreachableError = function(verb, url) {
-    Error.captureStackTrace(this, this.constructor);
-    this.__proto__ = new RestError('REST action ' + verb + ' ' + url + ' unreachable', verb, url);
-    this.__proto__.constructor = RestUnreachableError;
-    this.__proto__.name = 'RestUnreachableError';
+    var message = 'REST action ' + verb + ' ' + url + ' unreachable';
+    var self = new RestBaseError('RestUnreachableError', message, verb, url);
+
+    Error.captureStackTrace(this, RestUnreachableError);
+    return self;
 };
 
-var RestErrError = function(verb, url, statusCode, errorMessage) {
+var RestError = function(verb, url, statusCode, errorMessage) {
     var message = 'REST action ' + verb + ' ' + url + ' returned HTTP error ' + statusCode;
     if (errorMessage && errorMessage.length > 0) {
         message += ': ' + errorMessage;
     }
+    var self = new RestBaseError('RestError', message, verb, url);
+
     var _statusCode = statusCode;
     var _errorMessage = errorMessage;
 
-    Error.captureStackTrace(this, this.constructor);
-    this.__proto__ = new RestError(message, verb, url);
-    this.__proto__.constructor = RestErrError;
-    this.__proto__.name = 'RestError';
-    this.__proto__.getStatusCode = function() { return _statusCode; };
-    this.__proto__.getErrorMessage = function() { return _errorMessage; };
+    self.getStatusCode = function() { return _statusCode; };
+    self.getErrorMessage = function() { return _errorMessage; };
+
+    Error.captureStackTrace(this, RestError);
+    return self;
 };
 
 var RestPKiError = function(verb, url, errorCode, detail) {
@@ -113,354 +123,487 @@ var RestPKiError = function(verb, url, errorCode, detail) {
     if (detail && detail.length > 0) {
         message += ' (' + detail + ')';
     }
+    var self = new RestBaseError('RestPkiError', message, verb, url);
+
     var _errorCode = errorCode;
     var _detail = detail;
 
-    Error.captureStackTrace(this, this.constructor);
-    this.__proto__ = new RestError(message, verb, url);
-    this.__proto__.constructor = RestPKiError;
-    this.__proto__.name = 'RestPKiError';
-    this.__proto__.getErrorCode = function() { return _errorCode; };
-    this.__proto__.getDetail = function() { return _detail; };
+    self.getErrorCode = function() { return _errorCode; };
+    self.getDetail = function() { return _detail; };
+
+    Error.captureStackTrace(this, RestPKiError);
+    return self;
 };
 
 var ValidationError = function(verb, url, validationResults) {
+    var message = validationResults.__toString();
+    var self = new RestBaseError('ValidationError', message, verb, url);
+
     var _validationResults = validationResults;
 
-    Error.captureStackTrace(this, this.constructor);
-    this.__proto__ = new RestError(validationResults.__toString(), verb, url);
-    this.__proto__.constructor = ValidationError;
-    this.__proto__.name = 'ValidationError';
-    this.__proto__.getValidationResults = function() { return _validationResults; };
+    self.getValidationResults = function() { return _validationResults; };
+
+    Error.captureStackTrace(this, ValidationError);
+    return self;
 };
 
 var Authentication = function(restPkiClient) {
+    var self = this;
 
     var _restPkiClient = restPkiClient;
-    var _certificate;
+    var _certificateInfo;
     var _done = false;
 
-    this.startWithWebPkiAsync = function(securityContextId) {
+    self.startWithWebPkiAsync = function(securityContextId) {
 
-        return new Promise(function(resolve) {
+        return new Promise(function(resolve, reject) {
             _restPkiClient.post('Api/Authentications', { 'securityContextId': securityContextId })
             .then(function(response) {
                 resolve(response.token);
+            }).catch(function(err) {
+                reject(err);
             });
         });
     };
 
-    this.completeWithWebPkiAsync = function(token) {
+    self.completeWithWebPkiAsync = function(token) {
 
-        return new Promise(function(resolve) {
+        return new Promise(function(resolve, reject) {
             _restPkiClient.post('Api/Authentications/' + token + '/Finalize', null)
             .then(function(response) {
-                _certificate = response.certificate;
+                _certificateInfo = response.certificate;
                 _done = true;
 
                 resolve(new ValidationResults(response.validationResults));
+            }).catch(function(err) {
+                reject(err);
             });
         });
     };
 
-    this.getCertificate = function() {
+    self.getCertificateInfo = function() {
         if (!_done) {
-            throw new Error('The method getCertificate() can only called after calling the completeWithWebPki method');
+            throw new Error('The method getCertificateInfo() can only called after calling the completeWithWebPki method');
         }
 
-        return _certificate;
+        return _certificateInfo;
     };
+
+    return self;
+};
+
+var SignatureStarter = function(restPkiClient) {
+    var self = this;
+
+    self._client = restPkiClient;
+    self._signerCertificateBase64 = null;
+    self._done = null;
+    self._certificateInfo = null;
+    self._signaturePolicy = null;
+    self._securityContext = null;
+    self._callbackArgument = null;
+
+    function _getSignatureAlgorithm(oid) {
+        switch(oid) {
+            case '1.2.840.113549.2.5':
+                return 'RSA-MD5';
+            case '1.3.14.3.2.26':
+                return 'RSA-SHA1';
+            case '2.16.840.1.101.3.4.2.1':
+                return 'RSA-SHA256';
+            case '2.16.840.1.101.3.4.2.2':
+                return 'RSA-SHA384';
+            case '2.16.840.1.101.3.4.2.3':
+                return 'RSA-SHA512';
+            default:
+                return null;
+        }
+    }
+
+    self._getClientSideInstructionsObject = function(response) {
+        return {
+            token: response.token,
+            toSignData: new Buffer(response.toSignData, 'base64'),
+            toSignHash: new Buffer(response.toSignHash, 'base64'),
+            digestAlgorithmOid: response.digestAlgorithmOid,
+            signatureAlgorithm: _getSignatureAlgorithm(response.digestAlgorithmOid)
+        };
+    };
+
+    self.setSignerCertificateRaw = function(certificate) {
+        self._signerCertificateBase64 = new Buffer(certificate).toString('base64');
+    };
+
+    self.setSignerCertificateBase64 = function(certificate) {
+        self._signerCertificateBase64 = certificate;
+    };
+
+    self.setSecurityContext = function(securityContextId) {
+        self._securityContext = securityContextId;
+    };
+
+    self.setSignaturePolicy = function(signaturePolicyId) {
+        self._signaturePolicy = signaturePolicyId;
+    };
+
+    self.setCallbackArgument = function(callbackArgument) {
+        self._callbackArgument = callbackArgument;
+    };
+
+    self.getCertificateInfo = function() {
+
+        if (!self._done) {
+            throw new Error('The getCertificateInfo() method can only be called after calling one of the start methods');
+        }
+        return self._certificateInfo;
+    };
+
+    self.startWithWebPkiAsync = null;
+    self.startAsync = null;
+
+    return self;
 };
 
 var PadesSignatureStarter = function(restPkiClient) {
+    var self = new SignatureStarter(restPkiClient);
 
-    var _restPkiClient = restPkiClient;
-    var _pdfContent;
-    var _securityContextId;
-    var _signaturePolicyId;
-    var _visualRepresentation;
+    var _visualRepresentation = null;
+    var _pdfToSign = null;
 
-    this.setPdfFileToSign = function(pdfPath) {
-        _pdfContent = fs.readFileSync(appRoot + pdfPath);
+    //region setPdfToSign
+    self.setPdfToSignFromPath = function(path) {
+        _pdfToSign = fs.readFileSync(appRoot + path, 'base64');
     };
 
-    this.setPdfContentToSign = function(content) {
-        _pdfContent = content;
+    self.setPdfToSignFromContentRaw = function(contentRaw) {
+        _pdfToSign = new Buffer(contentRaw).toString('base64');
     };
 
-    this.setSecurityContextId = function(securityContextId) {
-        _securityContextId = securityContextId;
+    self.setPdfToSignFromContentBase64 = function(contentBase64) {
+        _pdfToSign = contentBase64;
     };
 
-    this.setSignaturePolicyId = function(signaturePolicyId) {
-        _signaturePolicyId = signaturePolicyId;
+    self.setPdfFileToSign = function(path) {
+        self.setPdfToSignFromPath(path);
     };
 
-    this.setVisualRepresentation = function(visualRepresentation) {
+    self.setPdfContentToSign = function(contentRaw) {
+        self.setPdfToSignFromContentRaw(contentRaw);
+    };
+    //endregion
+
+    self.setVisualRepresentation = function(visualRepresentation) {
         _visualRepresentation = visualRepresentation;
     };
 
-    this.startWithWebPkiAsync = function() {
+    self.startWithWebPkiAsync = function() {
 
-        if (_isNullOrEmpty(_pdfContent)) {
+        return new Promise(function(resolve, reject) {
+            _startCommonAsync().then(function(response) {
+
+                if (response.certificate) {
+                    self._certificateInfo = response.certificate;
+                }
+                self._done = true;
+
+                resolve(response.token);
+            }).catch(function(err) {
+                reject(err);
+            });
+        });
+    };
+
+    self.startAsync = function() {
+
+        if (_isNullOrEmpty(self._signerCertificateBase64)) {
+            throw new Error('The signer certificate was not set');
+        }
+
+        return new Promise(function(resolve, reject) {
+            _startCommonAsync().then(function(response) {
+
+               if (response.certificate) {
+                   self._certificateInfo = response.certificate;
+               }
+               self._done = true;
+
+               resolve(self._getClientSideInstructionsObject(response));
+           }).catch(function(err) {
+               reject(err);
+            });
+        });
+    };
+
+    function _startCommonAsync() {
+
+        if (_isNullOrEmpty(_pdfToSign)) {
             throw new Error('The PDF to sign was not set');
         }
-        if (_isNullOrEmpty(_signaturePolicyId)) {
+        if (_isNullOrEmpty(self._signaturePolicy)) {
             throw new Error('The signature policy was not set');
         }
 
-        return new Promise(function(resolve) {
-            _restPkiClient.post('Api/PadesSignatures', {
-                'pdfToSign' : new Buffer(_pdfContent).toString('base64'), // Base64-encoding
-                'signaturePolicyId': _signaturePolicyId,
-                'securityContextId': _securityContextId,
-                'visualRepresentation': _visualRepresentation
-            }).then(function(response) {
-                resolve(response.token);
-            });
-        });
-    };
-};
+        var request = {
+            'certificate': self._signerCertificateBase64,
+            'signaturePolicyId': self._signaturePolicy,
+            'securityContextId': self._securityContext,
+            'callbackArgument': self.callbackArgument,
+            'visualRepresentation': _visualRepresentation
+        };
 
-var PadesSignatureFinisher = function(restPkiClient) {
+        request['pdfToSign'] = _pdfToSign;
 
-    var _restPkiClient = restPkiClient;
-    var _token;
-    var _done;
-    var _signedPdf;
-    var _certificate;
+        return self._client.post('Api/PadesSignatures', request);
+    }
 
-    this.setToken = function(token) {
-        _token = token;
-    };
-
-    this.finishAsync = function() {
-
-        if (_isNullOrEmpty(_token)) {
-            throw new Error('The token was not set');
-        }
-
-        return new Promise(function(resolve) {
-            _restPkiClient.post('Api/PadesSignatures/' + _token + '/Finalize', null)
-            .then(function(response) {
-                _signedPdf = new Buffer(response.signedPdf, 'base64'); // Base64-decoding
-                _certificate = response.certificate;
-                _done = true;
-
-                resolve(_signedPdf);
-            });
-        });
-    };
-
-    this.getCertificate = function() {
-        if (!_done) {
-            throw new Error('The method getCertificate() can only be called after calling the finish() method');
-        }
-        return _certificate;
-    };
-
-    this.writeSignedPdfToPath = function(pdfPath) {
-        if (!_done) {
-            throw new Error('The method writeSignedPdfToPath() can only be called after calling the finish() method');
-        }
-        fs.writeFileSync(pdfPath, _signedPdf);
+    return {
+        setSignerCertificateRaw: self.setSignerCertificateRaw,
+        setSignerCertificateBase64: self.setSignerCertificateBase64,
+        setSecurityContext: self.setSecurityContext,
+        setSignaturePolicy: self.setSignaturePolicy,
+        setCallbackArgument: self.setCallbackArgument,
+        getCertificateInfo: self.getCertificateInfo,
+        setPdfToSignFromPath: self.setPdfToSignFromPath,
+        setPdfToSignFromContentRaw: self.setPdfToSignFromContentRaw,
+        setPdfToSignFromContentBase64: self.setPdfToSignFromContentBase64,
+        setPdfFileToSign: self.setPdfFileToSign,
+        setPdfContentToSign: self.setPdfContentToSign,
+        setVisualRepresentation: self.setVisualRepresentation,
+        startWithWebPkiAsync: self.startWithWebPkiAsync,
+        startAsync: self.startAsync
     };
 };
 
 var CadesSignatureStarter = function(restPkiClient) {
+    var self = new SignatureStarter(restPkiClient);
 
-    var _restPkiClient = restPkiClient;
-    var _contentToSign;
-    var _securityContextId;
-    var _signaturePolicyId;
-    var _cmsToCoSign;
-    var _callbackArgument;
-    var _encapsulateContent;
+    var _fileToSign = null;
+    var _cmsToCoSign = null;
+    var _encapsulateContent = null;
 
-    this.setFileToSign = function(filePath) {
-        _contentToSign = fs.readFileSync(appRoot + filePath);
+    //region setFileToSign
+
+    self.setFileToSignFromPath = function(path) {
+        _fileToSign = fs.readFileSync(appRoot + path, 'base64');
     };
 
-    this.setContentToSign = function(content) {
-        _contentToSign = content;
+    self.setFileToSignFromContentRaw = function(contentRaw) {
+        _fileToSign = new Buffer(contentRaw).toString('base64');
     };
 
-    this.setCmsFileToCoSign = function(cmsPath) {
-        _cmsToCoSign = fs.readFileSync(appRoot + cmsPath);
+    self.setFileToSignFromContentBase64 = function(contentBase64) {
+        _fileToSign = contentBase64;
     };
 
-    this.setCmsToCoSign = function(cmsBytes) {
-        _cmsToCoSign = cmsBytes;
+    self.setFileToSign = function(path) {
+        self.setFileToSignFromPath(path);
     };
 
-    this.setSecurityContextId = function(securityContextId) {
-        _securityContextId = securityContextId;
+    self.setContentToSign = function(contentRaw) {
+        self.setFileToSignFromContentRaw(contentRaw);
     };
 
-    this.setSignaturePolicyId = function(signaturePolicyId) {
-        _signaturePolicyId = signaturePolicyId;
+    //endregion
+
+    //region setCmsToCoSign
+
+    self.setCmsToCoSignFromPath = function(path) {
+        _cmsToCoSign = fs.readFileSync(appRoot + path, 'base64');
     };
 
-    this.setCallbackArgument = function(callbackArgument) {
-        _callbackArgument = callbackArgument;
+    self.setCmsToCoSignFromContentRaw = function(contentRaw) {
+        _cmsToCoSign = new Buffer(contentRaw).toString('base64');
     };
 
-    this.setEncapsulateContent = function(encapsulateContent) {
+    self.setCmsToCoSignFromcontentBase64 = function(contentBase64) {
+        _cmsToCoSign = contentBase64;
+    };
+
+    self.setCmsFileToSign = function(path) {
+        self.setCmsToCoSignFromPath(path);
+    };
+
+    self.setCmsToSign = function(contentRaw) {
+        self.setCmsToCoSignFromContentRaw(contentRaw);
+    };
+
+    //endregion
+
+    self.setEncapsulateContent = function(encapsulateContent) {
         _encapsulateContent = encapsulateContent;
     };
 
-    this.startWithWebPkiAsync = function() {
+    self.startWithWebPkiAsync = function() {
 
-        if (_isNullOrEmpty(_contentToSign) && _isNullOrEmpty(_cmsToCoSign)) {
+        return new Promise(function(resolve, reject) {
+           _startCommonAsync().then(function(response) {
+
+               if (response.certificate) {
+                   self._certificateInfo = response.certificate;
+               }
+               self._done = true;
+
+               resolve(response.token);
+           }).catch(function(err) {
+               reject(err);
+           });
+        });
+    };
+
+    self.startAsync = function() {
+
+        if (_isNullOrEmpty(self._signerCertificateBase64)) {
+            throw new Error('The signer certificate was not set');
+        }
+
+        return new Promise(function(resolve, reject) {
+            _startCommonAsync().then(function(response) {
+
+                if (response.certificate) {
+                    self._certificateInfo = response.certificate;
+                }
+                self._done = true;
+
+                resolve(self._getClientSideInstructionsObject(response));
+            }).catch(function(err) {
+                reject(err);
+            });
+        });
+    };
+
+    function _startCommonAsync() {
+
+        if (_isNullOrEmpty(_fileToSign) && _isNullOrEmpty(_cmsToCoSign)) {
             throw new Error('The content to sign was not set and no CMS to be co-signed was given');
         }
-        if (_isNullOrEmpty(_signaturePolicyId)) {
+        if (_isNullOrEmpty(self._signaturePolicy)) {
             throw new Error('The signature policy was not set');
         }
 
         var request = {
-            'signaturePolicyId': _signaturePolicyId,
-            'securityContextId': _securityContextId,
-            'callbackArgument': _callbackArgument,
+            'certificate': self._signerCertificateBase64,
+            'signaturePolicyId': self._signaturePolicy,
+            'securityContextId': self._securityContext,
+            'callbackArgument': self.callbackArgument,
             'encapsulateContent': _encapsulateContent
         };
-        if (!_isNullOrEmpty(_contentToSign)) {
-            request['contentToSign'] = new Buffer(_contentToSign).toString('base64');
+
+        if (_fileToSign) {
+            request['contentToSign'] = _fileToSign;
         }
-        if (!_isNullOrEmpty(_cmsToCoSign)) {
-            request['cmsToCoSign'] = new Buffer(_cmsToCoSign).toString('base64');
-        }
-
-        return new Promise(function(resolve) {
-            _restPkiClient.post('Api/CadesSignatures', request)
-            .then(function(response) {
-                resolve(response.token);
-            });
-        });
-    };
-};
-
-var CadesSignatureFinisher = function(restPkiClient) {
-
-    var _restPkiClient = restPkiClient;
-    var _token;
-    var _done;
-    var _cms;
-    var _certificate;
-    var _callbackArgument;
-
-    this.setToken = function(token) {
-        _token = token;
-    };
-
-    this.finishAsync = function() {
-
-        if (_isNullOrEmpty(_token)) {
-            throw new Error('The token was not set');
+        if (_cmsToCoSign) {
+            request['cmsToCoSign'] = _cmsToCoSign;
         }
 
-        return new Promise(function(resolve) {
-            _restPkiClient.post('Api/CadesSignatures/' + _token + '/Finalize', null)
-            .then(function(response) {
-                _cms = new Buffer(response.cms, 'base64'); // Base64-decoding
-                _certificate = response.certificate;
-                _callbackArgument = response.callbackArgument;
-                _done = true;
+        return self._client.post('Api/CadesSignatures', request);
+    }
 
-                resolve(_cms);
-            });
-        });
-    };
-
-    this.getCertificate = function() {
-        if (!_done) {
-            throw new Error('The method getCertificate() can only be called after calling the finish() method');
-        }
-        return _certificate;
-    };
-
-    this.getCallbackArgument = function() {
-        if (!_done) {
-            throw new Error('The method getCallbackArgument() can only be called after calling the finish() method');
-        }
-        return _callbackArgument;
-    };
-
-    this.writeCmsToPath = function(path)  {
-        if (!_done) {
-            throw new Error('The method writeCmsfToPath() can only be called after calling the finish() method');
-        }
-        fs.writeFileSync(path, _cms);
-    };
-
+    return {
+        setSignerCertificateRaw: self.setSignerCertificateRaw,
+        setSignerCertificateBase64: self.setSignerCertificateBase64,
+        setSecurityContext: self.setSecurityContext,
+        setSignaturePolicy: self.setSignaturePolicy,
+        setCallbackArgument: self.setCallbackArgument,
+        getCertificateInfo: self.getCertificateInfo,
+        setFileToSignFromPath: self.setFileToSignFromPath,
+        setFileToSignFromContentRaw: self.setFileToSignFromContentRaw,
+        setFileToSignFromContentBase64: self.setFileToSignFromContentBase64,
+        setFileToSign: self.setFileToSign,
+        setContentToSign: self.setContentToSign,
+        setCmsToCoSignFromPath: self.setCmsToCoSignFromPath,
+        setCmsToCoSignFromContentRaw: self.setCmsToCoSignFromContentRaw,
+        setCmsToCoSignFromcontentBase64: self.setCmsToCoSignFromcontentBase64,
+        setCmsFileToSign: self.setCmsFileToSign,
+        setCmsToSign: self.setCmsToSign,
+        setEncapsulateContent: self.setEncapsulateContent,
+        startWithWebPkiAsync: self.startWithWebPkiAsync,
+        startAsync: self.startAsync
+    }
 };
 
 var XmlSignatureStarter = function(restPkiClient) {
+    var self = new SignatureStarter(restPkiClient);
 
-    this._restPkiClient = restPkiClient;
-    this._xmlContent = null;
-    this._securityContextId = null;
-    this._signaturePolicyId = null;
-    this._signatureElementId = null;
-    this._signatureElementLocationXPath = null;
-    this._signatureElementLocationNsm = null;
-    this._signatureElementLocationInsertionOption = null;
+    self._xmlToSign = null;
+    self._signatureElementId = null;
+    self._signatureElementLocationXPath = null;
+    self._signatureElementLocationNsm = null;
+    self._signatureElementLocationInsertionOption = null;
 
-    this.setXmlFileToSign = function(xmlPath) {
-        this._xmlContent = fs.readFileSync(appRoot + xmlPath);
+    //region setXmlToSign
+
+    self.setXmlToSignFromPath = function(path) {
+        self._xmlToSign = fs.readFileSync(appRoot + path, 'base64');
     };
 
-    this.setXmlContentToSign = function(content) {
-        this._xmlContent = content;
+    self.setXmlToSignFromContentRaw = function(contentRaw) {
+        self._xmlToSign = new Buffer(contentRaw).toString('base64');
     };
 
-    this.setSecurityContextId = function(securityContextId) {
-        this._securityContextId = securityContextId;
+    self.setXmlToSignFromContentBase64 = function(contentBase64) {
+        self._xmlToSign = contentBase64;
     };
 
-    this.setSignaturePolicyId = function(signaturePolicyId) {
-        this._signaturePolicyId = signaturePolicyId;
+    self.setXmlFileToSign = function(path) {
+        self.setXmlToSignFromPath(path);
     };
 
-    this.setSignatureElementLocation = function(xpath, insertionOption, namespaceManager) {
-        this._signatureElementLocationXPath = xpath;
-        this._signatureElementLocationInsertionOption = insertionOption;
-        this._signatureElementLocationNsm = namespaceManager;
+    self.setXmlContentToSign = function(contentRaw) {
+        self.setXmlToSignFromContentRaw(contentRaw);
     };
 
-    this.setSignatureElementId = function(signatureElementId) {
-        this._signatureElementId = signatureElementId;
+    //endregion
+
+    self.setSignatureElementLocation = function(xpath, insertionOption, namespaceManager) {
+        self._signatureElementLocationXPath = xpath;
+        self._signatureElementLocationInsertionOption = insertionOption;
+        self._signatureElementLocationNsm = namespaceManager;
     };
 
-    this._verifyCommonParameters = function() {
-        if (_isNullOrEmpty(this._signaturePolicyId)) {
+    self.setSignatureElementId = function(signatureElementId) {
+        self._signatureElementId = signatureElementId;
+    };
+
+    self._verifyCommonParameters = function(isWithWebPki) {
+        isWithWebPki = isWithWebPki || false;
+
+        if (!isWithWebPki) {
+            if (_isNullOrEmpty(self._signerCertificateBase64)) {
+                throw new Error('The signer certificate was not set');
+            }
+        }
+        if (_isNullOrEmpty(self._signaturePolicy)) {
             throw new Error('The signature policy was not set');
         }
     };
 
-    this._getRequest = function() {
+    self._getRequest = function() {
 
         var request = {
-            'signaturePolicyId': this._signaturePolicyId,
-            'securityContextId': this._securityContextId,
-            'signatureElementId': this._signatureElementId
+            'certificate': self._signerCertificateBase64,
+            'signaturePolicyId': self._signaturePolicy,
+            'securityContextId': self._securityContext,
+            'signatureElementId': self._signatureElementId
         };
 
-        if (this._xmlContent != null) {
-            request['xml'] = new Buffer(this._xmlContent).toString('base64'); // Base64-encoding
+        if (self._xmlToSign) {
+            request['xml'] = self._xmlToSign;
         }
-        if (this._signatureElementLocationXPath != null && this._signatureElementLocationInsertionOption != null) {
+        if (self._signatureElementLocationXPath && self._signatureElementLocationInsertionOption) {
+
             request['signatureElementLocation'] = {
-                'xPath': this._signatureElementLocationXPath,
-                'insertionOption': this._signatureElementLocationInsertionOption
+                'xPath': self._signatureElementLocationXPath,
+                'insertionOption': self._signatureElementLocationInsertionOption
             };
-            if (this._signatureElementLocationNsm != null) {
+            if (self._signatureElementLocationNsm) {
+
                 request['signatureElementLocation']['namespaces'] = [];
-                for (var key in this._signatureElementLocationNsm) {
-                    if (this._signatureElementLocationNsm.hasOwnProperty(key)) {
+                for (var key in self._signatureElementLocationNsm) {
+
+                    if (self._signatureElementLocationNsm.hasOwnProperty(key)) {
                         request['signatureElementLocation']['namespaces'].push({
                             'prefix': key,
-                            'uri': this._signatureElementLocationNsm[key]
+                            'uri': self._signatureElementLocationNsm[key]
                         });
                     }
                 }
@@ -469,123 +612,412 @@ var XmlSignatureStarter = function(restPkiClient) {
 
         return request;
     };
+
+    return self;
 };
 
 var XmlElementSignatureStarter = function(restPkiClient) {
-    this.__proto__ = new XmlSignatureStarter(restPkiClient);
-    this.__proto__.constructor = XmlElementSignatureStarter;
+    var self = new XmlSignatureStarter(restPkiClient);
 
     var _toSignElementId;
     var _idResolutionTable;
 
-    this.setToSignElementId = function(toSignElementId)  {
+    self.setToSignElementId = function(toSignElementId)  {
         _toSignElementId = toSignElementId;
     };
 
-    this.setIdResolutionTable = function(idResolutionTable) {
+    self.setIdResolutionTable = function(idResolutionTable) {
         _idResolutionTable = idResolutionTable;
     };
 
-    this.startWithWebPkiAsync = function() {
+    self.startWithWebPkiAsync = function() {
 
-        console.log(this._signaturePolicyId);
+        self._verifyCommonParameters(true);
 
-        this._verifyCommonParameters();
-        if (_isNullOrEmpty(this._xmlContent)) {
+        return new Promise(function(resolve, reject) {
+            _startCommonAsync().then(function(response) {
+
+                if (response.certificate) {
+                    self._certificateInfo = response.certificate;
+                }
+                self._done = true;
+
+                resolve(response.token);
+            }).catch(function(err) {
+                reject(err);
+            });
+        });
+    };
+
+    self.startAsync = function() {
+
+        self._verifyCommonParameters(false);
+
+        return new Promise(function(resolve, reject) {
+           _startCommonAsync().then(function(response) {
+
+               if (response.certificate) {
+                   self._certificateInfo = response.certificate;
+               }
+               self._done = true;
+
+               resolve(self._getClientSideInstructionsObject(response));
+           }).catch(function(err) {
+               reject(err);
+           });
+        });
+    };
+
+    function _startCommonAsync() {
+
+        if (_isNullOrEmpty(self._xmlToSign)) {
             throw new Error('The XML was not set');
         }
         if (_isNullOrEmpty(_toSignElementId)) {
-            throw new Error('The XML element id to sign was not set');
+            throw new Error('The XML element Id to sign was not net');
         }
 
-        var request = this._getRequest();
+        var request = self._getRequest();
         request['elementToSignId'] = _toSignElementId;
         if (_idResolutionTable != null) {
             request['idResolutionTable'] = _idResolutionTable.toModel();
         }
 
-        var _restPkiClient = this._restPkiClient;
-        return new Promise(function(resolve) {
-            _restPkiClient.post('Api/XmlSignatures/XmlElementSignature', request)
-            .then(function(response) {
-                resolve(response.token);
-            });
-        });
+        return self._client.post('Api/XmlSignatures/XmlElementSignature', request);
+    }
+
+    return {
+        setSignerCertificateRaw: self.setSignerCertificateRaw,
+        setSignerCertificateBase64: self.setSignerCertificateBase64,
+        setSecurityContext: self.setSecurityContext,
+        setSignaturePolicy: self.setSignaturePolicy,
+        setCallbackArgument: self.setCallbackArgument,
+        getCertificateInfo: self.getCertificateInfo,
+        setXmlToSignFromPath: self.setXmlToSignFromPath,
+        setXmlToSignFromContentRaw: self.setXmlToSignFromContentRaw,
+        setXmlToSignFromContentBase64: self.setXmlToSignFromContentBase64,
+        setXmlFileToSign: self.setXmlFileToSign,
+        setXmlContentToSign: self.setXmlContentToSign,
+        setSignatureElementLocation: self.setSignatureElementLocation,
+        setSignatureElementId: self.setSignatureElementId,
+        setToSignElementId: self.setToSignElementId,
+        setIdResolutionTable: self.setIdResolutionTable,
+        startWithWebPkiAsync: self.startWithWebPkiAsync,
+        startAsync: self.startAsync
     };
 };
 
 var FullXmlSignatureStarter = function(restPkiClient) {
-    this.__proto__ = new XmlSignatureStarter(restPkiClient);
-    this.__proto__.constructor = FullXmlSignatureStarter;
+    var self = new XmlSignatureStarter(restPkiClient);
 
-    this.startWithWebPkiAsync = function() {
+    self.startWithWebPkiAsync = function() {
 
-        this._verifyCommonParameters();
-        if (_isNullOrEmpty(this._xmlContent)) {
-            throw new Error('The XML was not set');
-        }
+        self._verifyCommonParameters(true);
 
-        var request = this._getRequest();
+        return new Promise(function(resolve, reject) {
+            _startCommonAsync().then(function(response) {
 
-        var _restPkiClient = this._restPkiClient;
-        return new Promise(function(resolve) {
-            _restPkiClient.post('Api/XmlSignatures/FullXmlSignature', request)
-            .then(function(response) {
+                if (response.certificate) {
+                    self._certificateInfo = response.certificate;
+                }
+                self._done = true;
+
                 resolve(response.token);
-            });
-        })
-    };
-};
-
-var XmlSignatureFinisher = function(restPkiClient) {
-
-    var _restPkiClient = restPkiClient;
-    var _token;
-    var _done;
-    var _signedXml;
-    var _certificate;
-
-    this.setToken = function(token) {
-        _token = token;
-    };
-
-    this.finishAsync = function() {
-
-        if (_isNullOrEmpty(_token)) {
-            throw new Error('The token was not set');
-        }
-
-        return new Promise(function(resolve) {
-            _restPkiClient.post('Api/XmlSignatures/' + _token + '/Finalize', null)
-            .then(function(response) {
-                _signedXml = new Buffer(response.signedXml, 'base64'); // Base64-decoding
-                _certificate = response.certificate;
-                _done = true;
-
-                resolve(_signedXml);
+            }).catch(function(err) {
+                reject(err);
             });
         });
     };
 
-    this.getCertificate = function() {
-        if (!_done) {
-            throw new Error('The method getCertificate() can only be called after calling the finish() method');
-        }
-        return _certificate;
+    self.startAsync = function() {
+
+        self._verifyCommonParameters(false);
+
+        return new Promise(function(resolve, reject) {
+            _startCommonAsync().then(function(response) {
+
+                if (response.certificate) {
+                    self._certificateInfo = response.certificate;
+                }
+                self._done = true;
+
+                resolve(self._getClientSideInstructionsObject(response));
+            }).catch(function(err) {
+                reject(err);
+            });
+        });
     };
 
-    this.writeSignedXmlToPath = function(pdfPath) {
+    function _startCommonAsync() {
+
+        if (_isNullOrEmpty(self._xmlToSign)) {
+            throw new Error('The XML was not set');
+        }
+
+        var request = self._getRequest();
+
+        return self._client.post('Api/XmlSignatures/FullXmlSignature', request);
+    }
+
+    return {
+        setSignerCertificateRaw: self.setSignerCertificateRaw,
+        setSignerCertificateBase64: self.setSignerCertificateBase64,
+        setSecurityContext: self.setSecurityContext,
+        setSignaturePolicy: self.setSignaturePolicy,
+        setCallbackArgument: self.setCallbackArgument,
+        getCertificateInfo: self.getCertificateInfo,
+        setXmlToSignFromPath: self.setXmlToSignFromPath,
+        setXmlToSignFromContentRaw: self.setXmlToSignFromContentRaw,
+        setXmlToSignFromContentBase64: self.setXmlToSignFromContentBase64,
+        setXmlFileToSign: self.setXmlFileToSign,
+        setXmlContentToSign: self.setXmlContentToSign,
+        setSignatureElementLocation: self.setSignatureElementLocation,
+        setSignatureElementId: self.setSignatureElementId,
+        startWithWebPkiAsync: self.startWithWebPkiAsync,
+        startAsync: self.startAsync
+    };
+};
+
+var SignatureFinisher = function(restPkiClient) {
+    var self = this;
+
+    self._client = restPkiClient;
+    self._token = null;
+    self._signatureBase64 = null;
+    self._done = null;
+    self._callbackArgument = null;
+    self._certificateInfo = null;
+
+    self.setToken = function(token) {
+        self._token = token;
+    };
+
+    self.setSignatureRaw = function(signatureRaw) {
+        self._signatureBase64 = new Buffer(signatureRaw).toString('base64');
+    };
+
+    self.setSignatureBase64 = function(signatureBase64) {
+        self._signatureBase64 = signatureBase64;
+    };
+
+    self.finishAsync = null;
+
+    self.getCallbackArgument = function() {
+
+        if (!self._done) {
+            throw new Error('The getCallbackArgument() method can only be called after calling the finish() method')
+        }
+        return self._callbackArgument;
+    };
+
+    self.getCertificateInfo = function() {
+
+        if (!self._done) {
+            throw new Error('The method getCertificateInfo() can only be called after calling the finish() method');
+        }
+        return self._certificateInfo;
+    };
+
+    return self;
+};
+
+var PadesSignatureFinisher = function(restPkiClient) {
+    var self = new SignatureFinisher(restPkiClient);
+
+    var _signedPdf;
+
+    self.finishAsync = function() {
+
+        var request = {};
+
+        if (_isNullOrEmpty(self._token)) {
+            throw new Error('The token was not set');
+        }
+
+        return new Promise(function(resolve, reject) {
+
+            var promise;
+            if (_isNullOrEmpty(self._signatureBase64)) {
+                promise = self._client.post('Api/PadesSignatures/' + self._token + '/Finalize', null);
+            } else {
+                request['signature'] = self._signatureBase64;
+                promise = self._client.post('Api/PadesSignatures/' + self._token + '/SignedBytes', request);
+            }
+
+            promise.then(function(response) {
+
+                _signedPdf = new Buffer(response.signedPdf, 'base64'); // Base64-decoding
+                self._callbackArgument = response.callbackArgument;
+                self._certificateInfo = response.certificate;
+                self._done = true;
+
+                resolve(_signedPdf);
+            }).catch(function(err) {
+                reject(err);
+            });
+        });
+    };
+
+    self.getSignedPdf = function() {
+
+        if (!self._done) {
+            throw new Error('The getSignedPdf() method can only be called after calling the finish() method');
+        }
+        return _signedPdf;
+    };
+
+    self.writeSignedPdfToPath = function(pdfPath) {
+
+        if (!_done) {
+            throw new Error('The method writeSignedPdfToPath() can only be called after calling the finish() method');
+        }
+        fs.writeFileSync(pdfPath, _signedPdf);
+    };
+
+    return {
+        setToken: self.setToken,
+        setSignatureRaw: self.setSignatureRaw,
+        setSignatureBase64: self.setSignatureBase64,
+        getCallbackArgument: self.getCallbackArgument,
+        getCertificateInfo: self.getCertificateInfo,
+        finishAsync: self.finishAsync,
+        getSignedPdf: self.getSignedPdf,
+        writeSignedPdfToPath: self.writeSignedPdfToPath
+    };
+};
+
+var CadesSignatureFinisher = function(restPkiClient) {
+    var self = SignatureFinisher(restPkiClient);
+
+    var _cms;
+
+    self.finishAsync = function() {
+
+        var request = {};
+
+        if (_isNullOrEmpty(self._token)) {
+            throw new Error('The token was not set');
+        }
+
+        return new Promise(function(resolve, reject) {
+
+            var promise;
+            if (_isNullOrEmpty(self._signatureBase64)) {
+                promise = self._client.post('Api/CadesSignatures/' + _token + '/Finalize', null);
+            } else {
+                request['signature'] = self._signatureBase64;
+                promise = self._client.post('Api/CadesSignatures/' + _token + '/SignedBytes', request);
+            }
+
+            promise.then(function(response) {
+
+                _cms = new Buffer(response.cms, 'base64'); // Base64-decoding
+                self._callbackArgument = response.callbackArgument;
+                self._certificateInfo = response.certificate;
+                self._done = true;
+
+                resolve(_cms);
+            }).catch(function(err) {
+                reject(err);
+            });
+        });
+    };
+
+    self.getCms = function() {
+
+        if (!self._done) {
+            throw new Error('The getCms() method can only be called after calling the finish() method');
+        }
+        return _cms;
+    };
+
+    self.writeCmsToPath = function(path)  {
+
+        if (!self._done) {
+            throw new Error('The method writeCmsfToPath() can only be called after calling the finish() method');
+        }
+        fs.writeFileSync(path, _cms);
+    };
+
+    return {
+        setToken: self.setToken,
+        setSignatureRaw: self.setSignatureRaw,
+        setSignatureBase64: self.setSignatureBase64,
+        getCallbackArgument: self.getCallbackArgument,
+        getCertificateInfo: self.getCertificateInfo,
+        finishAsync: self.finishAsync,
+        getCms: self.getCms,
+        writeCmsToPath: self.writeCmsToPath
+    }
+
+};
+
+var XmlSignatureFinisher = function(restPkiClient) {
+    var self = new SignatureFinisher(restPkiClient);
+
+    var _signedXml;
+
+    self.finishAsync = function() {
+
+        if (_isNullOrEmpty(self._token)) {
+            throw new Error('The token was not set');
+        }
+
+        return new Promise(function(resolve, reject) {
+
+            var promise;
+            if (_isNullOrEmpty(self._signatureBase64)) {
+                promise = self._client.post('Api/XmlSignatures/' + self._token + '/Finalize', null);
+            } else {
+                request['signature'] = self._signatureBase64;
+                promise = self._client.post('Api/XmlSignatures/' + self._token + '/SignedBytes', request);
+            }
+
+            promise.then(function(response) {
+                _signedXml = new Buffer(response.signedXml, 'base64'); // Base64-decoding
+                self._callbackArgument = response.callbackArgument;
+                self._certificateInfo = response.certificate;
+                self._done = true;
+
+                resolve(_signedXml);
+            }).catch(function(err) {
+                reject(err);
+            });
+        });
+    };
+
+    self.getSignedXml = function() {
+
+        if(!self._done) {
+            throw new Error('The getSignedXml() method can only be called after calling the finish() method');
+        }
+        return _signedXml;
+    };
+
+    self.writeSignedXmlToPath = function(xmlPath) {
+
         if (!_done) {
             throw new Error('The method writeSignedXmlToPath() can only be called after calling the finish() method');
         }
-        fs.writeFileSync(pdfPath, _signedXml);
+        fs.writeFileSync(xmlPath, _signedXml);
+    };
+
+    return {
+        setToken: self.setToken,
+        setSignatureRaw: self.setSignatureRaw,
+        setSignatureBase64: self.setSignatureBase64,
+        getCallbackArgument: self.getCallbackArgument,
+        getCertificateInfo: self.getCertificateInfo,
+        finishAsync: self.finishAsync,
+        getSignedXml: self.getSignedXml,
+        writeSignedXmlToPath: self.writeSignedXmlToPath
     };
 };
 
 var StandardSignaturePolicies = {
     padesBasic: '78d20b33-014d-440e-ad07-929f05d00cdf',
     padesBasicWithPkiBrazilCerts: '3fec800c-366c-49bf-82c5-2e72154e70f6',
-    padesPadesTWithPkiBrazilCerts: '6a39aeea-a2d0-4754-bf8c-19da15296ddb',
+    padesTWithPkiBrazilCerts: '6a39aeea-a2d0-4754-bf8c-19da15296ddb',
     pkiBrazilPadesAdrBasica: '531d5012-4c0d-4b6f-89e8-ebdcc605d7c2',
     pkiBrazilPadesAdrTempo: '10f0d9a5-a0a9-42e9-9523-e181ce05a25b',
 
@@ -616,10 +1048,12 @@ var XmlInsertionOptions = {
 };
 
 var PadesVisualPositioningPresets = (function() {
+    var self = this;
 
     var _cachedPresets = {};
 
-    var getFootnote = function(restPkiClient, pageNumber, rows) {
+    self.getFootnote = function(restPkiClient, pageNumber, rows) {
+
         var urlSegment = 'Footnote';
         if (!_isNullOrEmpty(pageNumber)) {
             urlSegment += "?pageNumber=" + pageNumber;
@@ -631,11 +1065,12 @@ var PadesVisualPositioningPresets = (function() {
         return _getPreset(restPkiClient, urlSegment);
     };
 
-    var getNewPage = function(restPkiClient) {
+    self.getNewPage = function(restPkiClient) {
         return _getPreset(restPkiClient, 'NewPage');
     };
 
     function _getPreset(restPkiClient, urlSegment) {
+
         return new Promise(function(resolve) {
             if (_cachedPresets.hasOwnProperty(urlSegment)) {
                 resolve(_cachedPresets[urlSegment]);
@@ -649,13 +1084,11 @@ var PadesVisualPositioningPresets = (function() {
         });
     }
 
-    return {
-        getFootnote: getFootnote,
-        getNewPage: getNewPage
-    };
+    return self;
 })();
 
 var XmlIdResolutionTable = function(includeXmlIdGlobalAttribute) {
+    var self = this;
 
     var _model = {
         'elementIdAttributes': {},
@@ -663,14 +1096,14 @@ var XmlIdResolutionTable = function(includeXmlIdGlobalAttribute) {
         'includeXmlIdAttribute': includeXmlIdGlobalAttribute
     };
 
-    this.addGlobalIdAttribute = function(idAttributeLocalName, idAttributeNamespace) {
+    self.addGlobalIdAttribute = function(idAttributeLocalName, idAttributeNamespace) {
         _model['globalIdAttributes'] = {
             localName: idAttributeLocalName,
             namespace: idAttributeNamespace
         };
     };
 
-    this.setElementIdAttribute = function(elementLocalName, elementNamespace, idAttributeLocalName, idAttributeNamespace) {
+    self.setElementIdAttribute = function(elementLocalName, elementNamespace, idAttributeLocalName, idAttributeNamespace) {
         _model['elementIdAttributes'] = {
             element: {
                 localName: elementLocalName,
@@ -683,46 +1116,50 @@ var XmlIdResolutionTable = function(includeXmlIdGlobalAttribute) {
         };
     };
 
-    this.toModel = function() {
+    self.toModel = function() {
         return _model;
     };
+
+    return self;
 };
 
 var ValidationResults = function(model) {
+    var self = this;
+
     var _errors = _convertItems(model.errors);
     var _warnings = _convertItems(model.warnings);
     var _passedChecks = _convertItems(model.passedChecks);
 
-    this.isValid = function() {
+    self.isValid = function() {
         return _isNullOrEmpty(_errors);
     };
 
-    this.getChecksPerformed = function() {
+    self.getChecksPerformed = function() {
         return _errors.length + _warnings.length + _passedChecks.length;
     };
 
-    this.hasErrors = function() {
-        return !this.isValid();
+    self.hasErrors = function() {
+        return !self.isValid();
     };
 
-    this.hasWarnings = function() {
+    self.hasWarnings = function() {
         return _warnings && _warnings.length > 0;
     };
 
-    this.__toString = function() {
-        return this.toString(0);
+    self.__toString = function() {
+        return self.toString(0);
     };
 
-    this.toString = function(indentationLevel) {
+    self.toString = function(indentationLevel) {
         var itemIndent = '\t'.repeat(indentationLevel);
         var text = '';
 
-        text += this.getSummary(indentationLevel);
-        if (this.hasErrors()) {
+        text += self.getSummary(indentationLevel);
+        if (self.hasErrors()) {
             text += '\n' + itemIndent + 'Errors:\n';
             text += _joinItems(_errors, indentationLevel);
         }
-        if (this.hasWarnings()) {
+        if (self.hasWarnings()) {
             text += '\n' + itemIndent + 'Warnings:\n';
             text += _joinItems(_warnings, indentationLevel);
         }
@@ -734,24 +1171,24 @@ var ValidationResults = function(model) {
         return text;
     };
 
-    this.getSummary = function(indentationLevel) {
+    self.getSummary = function(indentationLevel) {
         indentationLevel = indentationLevel || 0;
 
         var itemIndent = '\t'.repeat(indentationLevel);
         var text = itemIndent + 'Validation results: ';
 
-        if (this.getChecksPerformed() === 0) {
+        if (self.getChecksPerformed() === 0) {
             text += 'no checks performed';
         } else {
-            text += this.getChecksPerformed() + ' checks performed';
-            if (this.hasErrors()) {
+            text += self.getChecksPerformed() + ' checks performed';
+            if (self.hasErrors()) {
                 text += ', ' + _errors.length + ' errors';
             }
-            if (this.hasWarnings()) {
+            if (self.hasWarnings()) {
                 text += ', ' + _warnings.length + ' warnings';
             }
             if (!_isNullOrEmpty(_passedChecks)) {
-                if (!this.hasErrors() && !this.hasWarnings()) {
+                if (!self.hasErrors() && !self.hasWarnings()) {
                     text += ', all passed';
                 } else {
                     text += ', ' + _passedChecks.length + ' passed';
@@ -788,9 +1225,13 @@ var ValidationResults = function(model) {
 
         return text;
     }
+
+    return self;
 };
 
 var ValidationItem = function (model) {
+    var self = this;
+
     var _type = model.type;
     var _message = model.message;
     var _detail = model.detail;
@@ -799,23 +1240,23 @@ var ValidationItem = function (model) {
         _innerValidationResults = new ValidationResults(model.innerValidationResults);
     }
 
-    this.getType = function() {
+    self.getType = function() {
         return _type;
     };
 
-    this.getMessage = function() {
+    self.getMessage = function() {
         return _message;
     };
 
-    this.getDetail = function() {
+    self.getDetail = function() {
         return _detail;
     };
 
-    this.__toString = function() {
-        return this.toString(0);
+    self.__toString = function() {
+        return self.toString(0);
     };
 
-    this.toString = function(indentationLevel) {
+    self.toString = function(indentationLevel) {
         var text = '';
         text += _message;
         if (!_isNullOrEmpty(_detail)) {
@@ -827,27 +1268,29 @@ var ValidationItem = function (model) {
         }
 
         return text;
-    }
+    };
+
+    return self;
 };
 
 function _isNullOrEmpty(collection) {
-    return collection == null || collection.length === 0;
+    return !collection || collection.length === 0;
 }
 
 module.exports = {
     RestPkiClient: RestPkiClient,
-    RestError: RestError,
     RestUnreachableError: RestUnreachableError,
-    RestErrError: RestErrError,
+    RestError: RestError,
     RestPKiError: RestPKiError,
     ValidationError: ValidationError,
     Authentication: Authentication,
     PadesSignatureStarter: PadesSignatureStarter,
-    PadesSignatureFinisher: PadesSignatureFinisher,
     CadesSignatureStarter: CadesSignatureStarter,
-    CadesSignatureFinisher: CadesSignatureFinisher,
+    XmlSignatureStarter: XmlSignatureStarter,
     XmlElementSignatureStarter: XmlElementSignatureStarter,
     FullXmlSignatureStarter: FullXmlSignatureStarter,
+    PadesSignatureFinisher: PadesSignatureFinisher,
+    CadesSignatureFinisher: CadesSignatureFinisher,
     XmlSignatureFinisher: XmlSignatureFinisher,
     StandardSignaturePolicies: StandardSignaturePolicies,
     StandardSecurityContexts: StandardSecurityContexts,

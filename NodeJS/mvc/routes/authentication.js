@@ -36,9 +36,8 @@ router.get('/', function (req, res, next) {
             token: token
         });
 
-    }).catch(function(err, data) {
-        next(err);
-        console.warn(data.message);
+    }).catch(function(error) {
+        next(error);
     });
 });
 
@@ -69,7 +68,7 @@ router.post('/', function (req, res, next) {
             // userCert.emailAddress or userCert.pkiBrazil.cpf (the actual field to be used as key depends on your
             // application's business logic) and set the user as authenticated with whatever web security framework
             // your application uses. For demonstration  purposes, we'll just render the user's certificate information.
-            userCert = auth.getCertificate();
+            userCert = auth.getCertificateInfo();
         }
 
         // Render the authentication completed page
@@ -79,9 +78,8 @@ router.post('/', function (req, res, next) {
             isValid: vr.isValid()
         });
 
-    }).catch(function(err, data) {
-        next(err);
-        console.warn(err, data.message);
+    }).catch(function(error) {
+        next(error);
     });
 });
 

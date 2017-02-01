@@ -3,7 +3,10 @@ var request = require('request');
 var fs = require('fs');
 var crypto = require('crypto');
 var uuid = require('node-uuid');
-var restPki = require('../lacuna-restpki');
+var restPki = require('../lacuna-restpki'),
+    CadesSignatureStarter = restPki.CadesSignatureStarter,
+    CadesSignatureFinisher = restPki.CadesSignatureFinisher,
+    StandardSignaturePolicies = restPki.StandardSignaturePolicies;
 var client = require('../restpki-client');
 
 var router = express.Router();
@@ -17,127 +20,111 @@ var appRoot = process.cwd();
  */
 router.get('/', function(req, res, next) {
 
-    // Read PEM-encoded certificate file for ("Pierre de Fermat")
-	var cert = fs.readFileSync('./resources/fermat-cert.pem');
+    var userfile = req.query.userfile;
+    var cmsfile = req.query.cmsfile;
 
-    // If the user was redirected here by the route "upload" (signature with file uploaded by user), the "userfile" URL
-    // argument will contain the filename under the "public/app-data" folder. Otherwise (signature with server file), we'll
-    // sign a sample document.
-    var contentToSign;
-    if (req.query.userfile) {
-        contentToSign = fs.readFileSync(appRoot + '/public/app-data/' + req.query.userfile);
+    // Instantiate the CadesSignatureStarter class, responsible for receiving the signature elements and start the
+    // signature process
+    var signatureStarter = new CadesSignatureStarter(client.getRestPkiClient());
+
+    // Set PEM-encoded certificate file for ("Pierre de Fermat")
+	signatureStarter.setSignerCertificateRaw(fs.readFileSync('./resources/fermat-cert.pem'));
+
+    if (userfile) {
+
+        // If the URL argument "userfile" is filled, it means the user was redirected here by the file upload.php
+        // (signature with file uploaded by user). We'll set the path of the file to be signed, which was saved in the
+        // "public/app-data" folder by the route "upload".
+        signatureStarter.setFileToSignFromPath('/public/app-data/' + userfile);
+    } else if (cmsfile) {
+
+        /*
+         * If the URL argument "cmsfile" is filled, the user has asked to co-sign a previously signed CMS. We'll set the
+         * path to the CMS to be co-signed, which was previously saved in the "public/app-data":
+         *
+         * 1. The CMS to be co-signed must be set using the method "setCmsToCoSign" or "setCmsFileToCoSign", not the
+         *    method "setContentToSign" nor "setFileToSign".
+         *
+         * 2. Since we're creating CMSs with encapsulated content (see call to setEncapsulateContent below), we don't
+         *    need to set the content to be signed, REST PKI will get the content from the CMS being co-signed.
+         */
+        signatureStarter.setCmsToCoSignFromPath('/public/app-data/' + cmsfile);
     } else {
-        contentToSign = fs.readFileSync(appRoot + '/public/SampleDocument.pdf');
+
+        // If both userfile and cmsfile are null, this is the "signature with server file" case. We'll set the path to
+        // the sample document.
+        signatureStarter.setFileToSignFromPath('/public/SampleDocument.pdf');
     }
 
-    var restRequest = {
+    // Set the signature policy
+    signatureStarter.setSignaturePolicy(StandardSignaturePolicies.pkiBrazilCadesAdrBasica);
 
-        // Base64-encoding of the content to be signed
-        contentToSign: new Buffer(contentToSign).toString('base64'),
+    // For this sample, we'll use the Lacuna Test PKI as our security context in order to accept our test certificate
+    // used above ("Pierre de Fermat"). This security context should be used ***** FOR DEVELOPMENT PUPOSES ONLY *****
+    signatureStarter.setSecurityContext('803517ad-3bbc-4169-b085-60053a8f6dbf');
 
-        // Base64-encoding of the signer certificate
-		certificate: new Buffer(cert).toString('base64'),
+    // Optionally, set whether the content should be encapsulated in the resulting CMS. If this parameter is ommitted,
+    // the following rules apply:
+    // - If no CmsToCoSign is given, the resulting CMS will include the content
+    // - If a CmsToCoSign is given, the resulting CMS will include the content if and only if the CmsToCoSign also
+    // includes the content
+    signatureStarter.setEncapsulateContent(true);
 
-        // Optionally, set whether the content should be encapsulated in the resulting CMS. If this parameter is ommitted,
-        // the following rules apply:
-        // - If no CmsToCoSign is given, the resulting CMS will include the content
-        // - If a CmsToCoSign is given, the resulting CMS will include the content if and only if the CmsToCoSign also includes the content
-        encapsulateContent: true,
+    // Call the start() method, which initiates the signature. This yields the parameters for the signature using the
+    // certificate
+    signatureStarter.startAsync().then(function(signatureParams) {
 
-        // Set the signature policy. For this sample, we'll use the Lacuna Test PKI in order to accept our test certificate used
-        // above ("Pierre de Fermat"). This security context should be used FOR DEVELOPMENT PUPOSES ONLY. In production, you'll
-        // typically want one of the alternatives below
-        signaturePolicyId: restPki.standardSignaturePolicies.pkiBrazilCadesAdrBasica,
-        securityContextId: '803517ad-3bbc-4169-b085-60053a8f6dbf'
-    };
+        // Read PEM-encoded private-key file for ("Pierre de Fermat")
+        var pkey = fs.readFileSync('./resources/fermat-pkey.pem', 'binary');
 
-    request.post(client.endpoint + 'Api/CadesSignatures', {
+        // Create a new signature, setting the algorithm that will be used
+        var sign = crypto.createSign(signatureParams.signatureAlgorithm);
 
-        json: true,
-        headers: { 'Authorization': 'Bearer ' + client.accessToken },
-        body: restRequest
+        // Set the data that will be signed
+        sign.write(signatureParams.toSignData);
+        sign.end();
 
-    }, onSignatureStarted);
+        // Perform the signature and receives the signature content
+        var signature = sign.sign({ key: pkey, passphrase: '1234' });
 
-    // This function will be executed as callback of the POST request that inicializes
-    // the signature on REST PKI. The response will be checked and if an error occured, it will be
-    // rendered.
-    function onSignatureStarted(err, restRes, body) {
+        // Instantiate the CadesSignatureFinisher class, responsible for completing the signature process
+        var signatureFinisher = new CadesSignatureFinisher(client.getRestPkiClient());
 
-        if (restPki.checkResponse(err, restRes, body, next)) {
+        // Set the token
+        signatureFinisher.setToken(signatureParams.token);
 
-            // Read PEM-encoded private-key file for ("Pierre de Fermat")
-            var pkey = fs.readFileSync('./resources/fermat-pkey.pem', 'binary');
+        // Set the signature
+        signatureFinisher.setSignatureRaw(signature);
 
-            // Get signature algorithm from the digestAlgorithmOid. It will be used by the crypto library
-            // to perform the signature.
-            var signatureAlgorithm;
-            switch(restRes.body.digestAlgorithmOid) {
-                case '1.2.840.113549.2.5':
-                    signatureAlgorithm = 'RSA-MD5';
-                    break;
-                case '1.3.14.3.2.26':
-                    signatureAlgorithm = 'RSA-SHA1';
-                    break;
-                case '2.16.840.1.101.3.4.2.1':
-                    signatureAlgorithm = 'RSA-SHA256';
-                    break;
-                case '2.16.840.1.101.3.4.2.2':
-                    signatureAlgorithm = 'RSA-SHA384';
-                    break;
-                case '2.16.840.1.101.3.4.2.3':
-                    signatureAlgorithm = 'RSA-SHA512';
-                    break;
-                default:
-                    signatureAlgorithm = null;
-            }
+        // Call the finishAsync() method, which finalizes the signature process
+        signatureFinisher.finishAsync().then(function(cms) {
 
-            // Create a new signature, setting the algorithm that will be used
-            var sign = crypto.createSign(signatureAlgorithm);
+            // Get information about the certificate used by the user to sign the file. This method must only be called
+            // after calling the finishAsync() method.
+            var signerCert = signatureFinisher.getCertificateInfo();
 
-            // Set the data that will be signed
-            sign.write(new Buffer(restRes.body.toSignData, 'base64')); 
-            sign.end();
-
-            // Perform the signature and receiving Base64-enconding of the signature
-            var signature = sign.sign({ key: pkey, passphrase: '1234' }, 'base64');
-
-            // Call the action POST Api/CadesSignatures/{token}/SignedBytes on REST PKI, which finalizes the signature process and 
-            // returns the signed PDF
-            request.post(client.endpoint + 'Api/CadesSignatures/' + restRes.body.token + '/SignedBytes', {
-                
-                json: true,
-                headers: { 'Authorization': 'Bearer ' + client.accessToken},
-                body: { 'signature': signature }
-                
-            }, onSignatureCompleted);
-        }
-    }
-
-    // This function will be executed as callback of the POST request that finalizes
-    // the signature on REST PKI. The response will be checked and if an error occured, it will be
-    // rendered.
-    function onSignatureCompleted(err, restRes, body) {
-                    
-        if (restPki.checkResponse(err, restRes, body, next)) {
-
-            // At this point, you'd typically store the signed PDF on your database. For demonstration purposes, we'll
-            // store the PDF on a temporary folder publicly accessible and render a link to it.
-            var signedContent = new Buffer(restRes.body.cms, 'base64');
+            // At this point, you'd typically swtore the CMS on your database. For demonstration purposes, we'll store
+            // the CMS on a temporary folder publicly accessible and render a link to it.
             var filename = uuid.v4() + '.p7s';
             var appDataPath = appRoot + '/public/app-data/';
             if (!fs.existsSync(appDataPath)) {
                 fs.mkdirSync(appDataPath);
             }
-            fs.writeFileSync(appDataPath + filename, signedContent);
+            fs.writeFileSync(appDataPath + filename, cms);
 
+            // Render the signature completed page
             res.render('cades-signature-complete', {
                 signedFileName: filename,
-                signerCert: restRes.body.certificate
+                signerCert: signerCert
             });
 
-        }
-    }
+        }).catch(function(error) {
+            next(error);
+        });
+
+    }).catch(function(error) {
+        next(error);
+    });
 });
 
 module.exports = router;

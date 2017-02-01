@@ -38,7 +38,7 @@ router.get('/', function (req, res, next) {
         // If the URL argument "userfile" is filled, it means the user was redirected here by the file upload.php
         // (signature with file uploaded by user). We'll set the path of the file to be signed, which was saved in the
         // "public/app-data" folder by the route "upload".
-        signatureStarter.setFileToSign('/public/app-data/' + userfile);
+        signatureStarter.setFileToSignFromPath('/public/app-data/' + userfile);
     } else if (cmsfile) {
 
         /*
@@ -51,19 +51,19 @@ router.get('/', function (req, res, next) {
          * 2. Since we're creating CMSs with encapsulated content (see call to setEncapsulateContent below), we don't
          *    need to set the content to be signed, REST PKI will get the content from the CMS being co-signed.
          */
-        signatureStarter.setCmsFileToCoSign('/public/app-data/' + cmsfile);
+        signatureStarter.setCmsToCoSignFromPath('/public/app-data/' + cmsfile);
     } else {
 
         // If both userfile and cmsfile are null, this is the "signature with server file" case. We'll set the path to
         // the sample document.
-        signatureStarter.setFileToSign('/public/SampleDocument.pdf');
+        signatureStarter.setFileToSignFromPath('/public/SampleDocument.pdf');
     }
 
     // Set the signature policy
-    signatureStarter.setSignaturePolicyId(StandardSignaturePolicies.pkiBrazilCadesAdrBasica);
+    signatureStarter.setSignaturePolicy(StandardSignaturePolicies.pkiBrazilCadesAdrBasica);
 
     // Optionally, set a SecurityContext to be used to determine trust in the certificate chain
-    //signatureStarter.setSecurityContextId(StandardSecurityContexts.pkiBrazil);
+    // signatureStarter.setSecurityContext(StandardSecurityContexts.pkiBrazil);
     // Note: Depending on the signature policy chosen above, setting the security context may be mandatory (this is not
     // the case for ICP-Brasil policies, which will automatically use the PKI_BRAZIL security context if none is passed)
 
@@ -97,9 +97,8 @@ router.get('/', function (req, res, next) {
             cmsfile: cmsfile
         });
 
-    }).catch(function(err, data) {
-        next(err);
-        console.warn(data.message);
+    }).catch(function(error) {
+        next(error);
     });
 });
 
@@ -125,7 +124,7 @@ router.post('/', function (req, res, next) {
 
         // Get information about the certificate used by the user to sign the file. This method must only be called
         // after calling the finishAsync() method.
-        var signerCert = signatureFinisher.getCertificate();
+        var signerCert = signatureFinisher.getCertificateInfo();
 
         // At this point, you'd typically swtore the CMS on your database. For demonstration purposes, we'll store the
         // CMS on a temporary folder publicly accessible and render a link to it.
@@ -142,9 +141,8 @@ router.post('/', function (req, res, next) {
             signerCert: signerCert
         });
 
-    }).catch(function(err, data) {
-        next(err);
-        console.warn(data.message);
+    }).catch(function(error) {
+        next(error);
     });
 });
 

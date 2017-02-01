@@ -37,10 +37,10 @@ router.get('/', function(req, res, next) {
 	);
 
 	// Set the signature policy
-	signatureStarter.setSignaturePolicyId(StandardSignaturePolicies.xadesBes);
+	signatureStarter.setSignaturePolicy(StandardSignaturePolicies.xadesBes);
 
     // Set a SecurityContext to be used to determine trust in the certificate chain
-	signatureStarter.setSecurityContextId(StandardSecurityContexts.pkiBrazil);
+	signatureStarter.setSecurityContext(StandardSecurityContexts.pkiBrazil);
 	// Note: By changing the SecurityContext above you can accept only certificates from a certain PKI, for instance,
 	// ICP-Brasil (StandardSecurityContexts.pkiBrazil).
 
@@ -66,9 +66,8 @@ router.get('/', function(req, res, next) {
             userfile: req.query.userfile
         });
 
-	}).catch(function(err, data) {
-		next(err);
-		console.warn(data.message);
+	}).catch(function(error) {
+		next(error);
 	});
 });
 
@@ -94,7 +93,7 @@ router.post('/', function(req, res, next) {
 
         // Get information about the certificate used by the user to sign the file. This method must only be called
 		// after calling the finishAsync() method.
-		var signerCert = signatureFinisher.getCertificate();
+		var signerCert = signatureFinisher.getCertificateInfo();
 
         // At this point, you'd typically store the signed XML on your database. For demonstration purposes, we'll
         // store the XML on a temporary folder publicly accessible and render a link to it.
@@ -111,9 +110,8 @@ router.post('/', function(req, res, next) {
             signerCert: signerCert
         });
 
-	}).catch(function(err, data) {
-		next(err);
-		console.warn(data);
+	}).catch(function(error) {
+		next(error);
 	});
 });
 

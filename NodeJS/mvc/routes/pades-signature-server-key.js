@@ -3,7 +3,13 @@ var request = require('request');
 var fs = require('fs');
 var crypto = require('crypto');
 var uuid = require('node-uuid');
-var restPki = require('../lacuna-restpki');
+var restPki = require('../lacuna-restpki'),
+	PadesSignatureStarter = restPki.PadesSignatureStarter,
+    PadesSignatureFinisher = restPki.PadesSignatureFinisher,
+    PadesVisualPositioningPresets = restPki.PadesVisualPositioningPresets,
+    StandardSignaturePolicies = restPki.StandardSignaturePolicies,
+    StandardSecurityContexts = restPki.StandardSecurityContexts;
+
 var client = require('../restpki-client');
 
 var router = express.Router();
@@ -16,223 +22,259 @@ var appRoot = process.cwd();
  * It renders the signature page.
  */
 router.get('/', function(req, res, next) {
-	
-    // Read PEM-encoded certificate file for ("Pierre de Fermat")
-	var cert = fs.readFileSync('./resources/fermat-cert.pem');
 
-	// If the user was redirected here by the route "upload" (signature with file uploaded by user), the "userfile" URL
-	// argument will contain the filename under the "public/app-data" folder. Otherwise (signature with server file), we'll
-	// sign a sample document.    
-    var pdfToSignContent;
-	if (req.query.userfile) {
-		pdfToSignContent = fs.readFileSync(appRoot + '/public/app-data/' + req.query.userfile);
-	} else {
-		pdfToSignContent = fs.readFileSync(appRoot + '/public/SampleDocument.pdf');
-	}
+    // This function is called below. It contains examples of signature visual representation positionings. This code is
+    // only in a separate function in order to organize the various examples, you can pick the one that best suits your
+    // needs and use it below directly without an encapsulating function.
+    function getVisualRepresentationPositionAsync(sampleNumber) {
 
-	// Read the contents of the PDF stamp image
-	var pdfStampContent = fs.readFileSync(appRoot + '/resources/PdfStamp.png');
-	
-	// Request to be sent to REST PKI
-	var restRequest = {
-			
-		// Base64-encoding of the PDF to be signed
-		pdfToSign: new Buffer(pdfToSignContent).toString('base64'),
-		
-        // Base64-encoding of the signer certificate
-		certificate: new Buffer(cert).toString('base64'),
+        switch(sampleNumber) {
+            case 1:
+                // Example #1: automatic positioning on footnote. This will insert the signature, and future signatures,
+                // ordered as a footnote of the last page of the document
+                return PadesVisualPositioningPresets.getFootnote(client.getRestPkiClient());
 
-		// Set the signature policy. For this sample, we'll use the Lacuna Test PKI in order to accept our test certificate used
-        // above ("Pierre de Fermat"). This security context should be used FOR DEVELOPMENT PUPOSES ONLY. In production, you'll
-        // typically want one of the alternatives below
-		signaturePolicyId: restPki.standardSignaturePolicies.padesBasic,
-		securityContextId: '803517ad-3bbc-4169-b085-60053a8f6dbf',
+            case 2:
+                // Example #2: get the footnote positioning preset and customize it
+                return new Promise(function(resolve, reject) {
+                    PadesVisualPositioningPresets.getFootnote(client.getRestPkiClient())
+                        .then(function(visualPosition) {
+                            visualPosition.auto.container.left = 2.54;
+                            visualPosition.auto.container.bottom = 2.54;
+                            visualPosition.auto.container.right = 2.54;
 
-        // Alternative option: PAdES Basic with ICP-Brasil certificates
-        // signaturePolicyId: restPki.standardSignaturePolicies.padesBasicWithPkiBrazilCerts,
+                            resolve(visualPosition);
+                        }).catch(function(error) {
+                        reject(error);
+                    });
+                });
 
-        // Alternative option: aAd a ICP-Brasil timestamp to the signature
-        // signaturePolicyId: restPki.standardSecurityPolicies.padesTWithPkiBrazilCerts,
+            case 3:
+                // Example #3: automatic positioning on new page. This will insert the signature, and future signatures,
+                // in a new page appended to the end of the document.
+                return PadesVisualPositioningPresets.getNewPage(client.getRestPkiClient());
 
-        // Alternative option: PAdES Basic with PKIs trusted by Windows
-        // signaturePolicyId: restPki.standardSignaturePolicies.padesBasic,
-        // signatureContextId: restPki.standardSecurityContexts.windowsServer,
+            case 4:
+                // Example #4: get the "new page" positioning preset and customize it
+                return new Promise(function(resolve, reject) {
+                    PadesVisualPositioningPresets.getNewPage(client.getRestPkiClient())
+                        .then(function(visualPosition) {
+                            visualPosition.auto.container.left = 2.54;
+                            visualPosition.auto.container.top = 2.54;
+                            visualPosition.auto.container.right = 2.54;
+                            visualPosition.auto.signatureRectangleSize.width = 5;
+                            visualPosition.auto.signatureRectangleSize.height = 3;
 
-		// Set the visual representation for the signature	
-		visualRepresentation: {
-			
-			image: {
-				
-				// We'll use as background the image previously loaded
-				resource: {
-					content: new Buffer(pdfStampContent).toString('base64'), // Base64-encoding!
-					mimeType: 'image/png'
-				},
-				
-				// (optional) Opacity is an integer from 0 to 100 (0 is completely transparent, 100 is completely opaque). If omitted, 100 is assumed.
-				opacity: 50,
-				
-				// (optional) Specify the image horizontal alignment. Possible values are 'Left', 'Center' and 'Right'. If omitted, 'Center' is assumed.
-				horizontalAlign: 'Right',
-				
-				// (optional) Specify the image vertical alignment. Possible values are 'Top', 'Center' and 'Bottom'. If omitted, 'Center' is assumed.
-				verticalAlign: 'Center'
-				
-			},
-			
-			text: {
-				
-				// The tags {{signerName}} and {{signerNationalId}} will be substituted according to the user's certificate:
-				// 	signerName -> full name of the signer
-				// 	signerNationalId -> if the certificate is ICP-Brasil, contains the signer's CPF
-				// 
-				// Follow the link above to see all available tags:
-				// https://github.com/LacunaSoftware/RestPkiSamples/blob/master/PadesTags.md
-				text: 'Signed by {{signerName}} ({{signerNationalId}})',
-				
-				// Specify that the signing time should also be rendered
-				includeSigningTime: true,
-				
-				// Optionally set the horizontal alignment of the text ('Left' or 'Right'), if not set the default is Left
-				horizontalAlign: 'Left',
+                            resolve(visualPosition);
+                        }).catch(function(error) {
+                        reject(error);
+                    });
+                });
 
-				// Optionally set the container within the signature rectangle on which to place the text. By default, the
-				// text can occupy the entire rectangle (how much of the rectangle the text will actually fill depends on the
-				// length and font size). Below, we specify that the text should respect a right margin of 1.5 cm.
-				container: {
-					left: 0,
-					top: 0,
-					right: 1.5,
-					bottom: 0
-				}
-				
-			},
-			
-			position: {
-				
-				// Page on which to draw the visual representation. Negative values are counted from the end of the document (-1 is last page).
-				// Zero means the signature will be placed on a new page appended to the end of the document.
-				pageNumber: -1,
+            case 5:
+                // Example #5: manual positioning
+                return new Promise(function(resolve) {
+                    resolve({
+                        pageNumber: 0, // zero means the signature will be placed on a new page appended to the end of the
+                        // document
+                        measurementUnits: 'Centimeters',
+                        // define a manual position of 5cm x 3cm, positioned at 1 inch from the left and bottom margins
+                        manual: {
+                            left: 2.54,
+                            bottom: 2.54,
+                            width: 5,
+                            height: 3
+                        }
+                    });
+                });
 
-				// Measurement units of the values below ('Centimeters' or 'PdfPoints')
-				measurementUnits: "Centimeters",
-				
-				// Automatic placing of signatures within a container, one after the other
-				auto: {
-					
-					// Specification of the container where the signatures will be placed
-					container: {
-						// Specifying left and right (but no width) results in a variable-width container with the given margins
-						left: 1.5,
-						right: 1.5,
-						// Specifying bottom and height (but no top) results in a bottom-aligned fixed-height container
-						bottom: 1.5,
-						height: 3
-					},
-					
-					// Specification of the size of each signature rectangle
-					signatureRectangleSize: {
-						width: 7,
-						height: 3
-					},
-					
-					// The signatures will be placed in the container side by side. If there's no room left, the signatures
-					// will "wrap" to the next row. The value below specifies the vertical distance between rows
-					rowSpacing: 1.5
-				}
-			}
-		}
+            case 6:
+                // Example #6: custom auto positioning
+                return new Promise(function(resolve) {
+                    resolve({
+                        pageNumber: -1, // negative values represent pages counted from the end of the document (-1 is
+                        // last page)
+                        measurementUnits: 'Centimeters',
+                        auto: {
+                            // Specification of the container where the signatures will be placed, one after the other
+                            container: {
+                                // Specifying left and right (but no width) results in a variable-width container with the
+                                // given margins
+                                left: 2.54,
+                                right: 2.54,
+                                // Specifying bottom and height (but no top) results in a bottom-aligned fixed-height
+                                // container
+                                bottom: 2.54,
+                                height: 12.31
+                            },
+                            // Specification of the size of each signature rectangle
+                            signatureRectangleSize: {
+                                width: 5,
+                                height: 3
+                            },
+                            // The signatures will be placed in the container side by side. If there's no room left, the
+                            // signatures will "wrap" to the next row. The value below specifies the vertical distance
+                            // between rows
+                            rowSpacing: 1
+                        }
+                    });
+                });
+
+            default:
+                return null;
+        }
+    }
+
+    // Instantiate the PadesSignatureStarter class, responsible for receiving the signature elements and start the signature
+	// process
+	var signatureStarter = new PadesSignatureStarter(client.getRestPkiClient());
+
+    // Set PEM-encoded certificate file for ("Pierre de Fermat")
+	signatureStarter.setSignerCertificateRaw(fs.readFileSync('./resources/fermat-cert.pem'));
+
+    // If the user was redirected here by the route "upload" (signature with file uploaded by user), the "userfile" URL
+    // argument will contain the filename under the "public/app-data" folder. Otherwise (signature with server file),
+    // we'll sign a sample document.
+    if (req.query.userfile) {
+        signatureStarter.setPdfToSignFromPath('/public/app-data/' + req.query.userfile);
+    } else {
+        signatureStarter.setPdfToSignFromPath('/public/SampleDocument.pdf');
+    }
+
+    // Set the signature policy. For this sample, we'll use the Lacuna Test PKI in order to accept our test certificate used
+    // above ("Pierre de Fermat"). This security context should be used FOR DEVELOPMENT PUPOSES ONLY. In production, you'll
+    // typically want one of the alternatives below
+    signatureStarter.setSignaturePolicy(StandardSignaturePolicies.padesBasic);
+    signatureStarter.setSecurityContext('803517ad-3bbc-4169-b085-60053a8f6dbf');
+
+    // Alternative option: PAdES Basic with ICP-Brasil certificates
+    // signatureStarter.setSignaturePolicy(StandardSignaturePolicies.padesBasicWithPkiBrazilCerts);
+
+    // Alternative option: aAd a ICP-Brasil timestamp to the signature
+    // signatureStarter.setSignaturePolicy(StandardSignaturePolicies.padesTWithPkiBrazilCerts);
+
+    // Alternative option: PAdES Basic with PKIs trusted by Windows
+    // signatureStarter.setSignaturePolicy(StandardSignaturePolicies.padesBasic);
+    // signatureStarter.setSecurityContext(StandardSecurityContexts.windowsServer);
+
+	var visualRepresentation = {
+
+        text: {
+            // The tags {{name}} and {{national_id}} will be substituted according to the user's certificate
+            //
+            //  name        : full name of the signer
+            //  national_id : if the certificate is ICP-Brasil, contains the signer's CPF
+            //
+            // For a full list of the supported tags, see:
+            // https://github.com/LacunaSoftware/RestPkiSamples/blob/master/PadesTags.md
+            text: 'Signed by {{signerName}} ({{signerNationalId}})',
+
+            // Specify that the signing time should also be rendered
+            includeSigningTime: true,
+
+            // Optionally set the horizontal alignment of the text ('Left' or 'Right'), if not set the default is Left
+            horizontalAlign: 'Left',
+
+            // Optionally set the container within the signature rectangle on which to place the text. By default, the
+            // text can occupy the entire rectangle (how much of the rectangle the text will actually fill depends on
+			// the length and font size). Below, we specify that the text should respect a right margin of 1.5 cm.
+            container: {
+                left: 0,
+				top: 0,
+				right: 1.5,
+				bottom: 0
+            }
+        },
+
+        image: {
+
+            // We'll use as background the image content/PdfStamp.png
+            resource: {
+                content: fs.readFileSync(appRoot + '/resources/PdfStamp.png', 'base64'), // Base64-encoded
+                mimeType: 'image/png'
+            },
+
+            // Opacity is an integer from 0 to 100 (0 is completely transparent, 100 is completely opaque).
+            opacity: 50,
+
+            // Align the image to the right
+            horizontalAlign: 'Right',
+
+            // Align the image to the center
+            verticalAlign: 'Center'
+        }
 	};
-	
-	// Call the action POST Api/PadesSignatures on REST PKI, which initiates the signature. 
-	request.post(client.endpoint + 'Api/PadesSignatures', {
 
-		json: true,
-		headers: { 'Authorization': 'Bearer ' + client.accessToken },
-		body: restRequest
-		
-	}, onSignatureStarted);
+    // Position of the visual representation. We have encapsulated this code in a function to include several
+    // possibilities depending on the argument passed to the function. Experiment changing the argument to see
+    // different examples of signature positioning. Once you decide which is best for your case, you can place the
+    // code directly here.
+    getVisualRepresentationPositionAsync(1).then(function(visualPosition) {
 
-	// This function will be executed as callback of the POST request that inicializes
-	// the signature on REST PKI. The response will be checked and if an error occured, it will be
-	// rendered.
-	function onSignatureStarted(err, restRes, body) {
+    	visualRepresentation['position'] = visualPosition;
 
-		if (restPki.checkResponse(err, restRes, body, next)) {
-			
-			// Read PEM-encoded private-key file for ("Pierre de Fermat")
-			var pkey = fs.readFileSync('./resources/fermat-pkey.pem', 'binary');
+    	// Set the visual representation for the signature
+		signatureStarter.setVisualRepresentation(visualRepresentation);
 
-			// Get signature algorithm from the digestAlgorithmOid. It will be used by the crypto library
-			// to perform the signature.
-			var signatureAlgorithm;
-			switch(restRes.body.digestAlgorithmOid) {
-				case '1.2.840.113549.2.5':
-					signatureAlgorithm = 'RSA-MD5';
-					break;
-				case '1.3.14.3.2.26':
-					signatureAlgorithm = 'RSA-SHA1';
-					break;
-				case '2.16.840.1.101.3.4.2.1':
-					signatureAlgorithm = 'RSA-SHA256';
-					break;
-				case '2.16.840.1.101.3.4.2.2':
-					signatureAlgorithm = 'RSA-SHA384';
-					break;
-				case '2.16.840.1.101.3.4.2.3':
-					signatureAlgorithm = 'RSA-SHA512';
-					break;
-				default:
-					signatureAlgorithm = null;
-			}
+        // Call the startAsync() method, which initiates the signature. This yields the parameters for the signature
+		// using the certificate
+		signatureStarter.startAsync().then(function(signatureParams) {
 
-			// Create a new signature, setting the algorithm that will be used
-			var sign = crypto.createSign(signatureAlgorithm);
+            // Read PEM-encoded private-key file for ("Pierre de Fermat")
+            var pkey = fs.readFileSync('./resources/fermat-pkey.pem', 'binary');
 
-			// Set the data that will be signed
-			sign.write(new Buffer(restRes.body.toSignData, 'base64')); 
-			sign.end();
+            // Create a new signature, setting the algorithm that will be used
+            var sign = crypto.createSign(signatureParams.signatureAlgorithm);
 
-			// Perform the signature and receiving Base64-enconding of the signature
-			var signature = sign.sign({ key: pkey, passphrase: '1234' }, 'base64');
+            // Set the data that will be signed
+            sign.write(signatureParams.toSignData);
+            sign.end();
 
-			// Call the action POST Api/PadesSignatures/{token}/SignedBytes on REST PKI, which finalizes the signature process and 
-			// returns the signed PDF
-			request.post(client.endpoint + 'Api/PadesSignatures/' + restRes.body.token + '/SignedBytes', {
-				
-				json: true,
-				headers: { 'Authorization': 'Bearer ' + client.accessToken},
-				body: { 'signature': signature }
-				
-			}, onSignatureCompleted);
-		}
-	}
+            // Perform the signature and receives the signature content
+            var signature = sign.sign({ key: pkey, passphrase: '1234' });
 
-	// This function will be executed as callback of the POST request that finalizes
-	// the signature on REST PKI. The response will be checked and if an error occured, it will be
-	// rendered.
-	function onSignatureCompleted(err, restRes, body) {
-					
-		if (restPki.checkResponse(err, restRes, body, next)) {
+            // Instantiate the PadesSignatureFinisher class, responsible for completing the signature process
+            var signatureFinisher = new PadesSignatureFinisher(client.getRestPkiClient());
 
-			// At this point, you'd typically store the signed PDF on your database. For demonstration purposes, we'll
-			// store the PDF on a temporary folder publicly accessible and render a link to it.
-			var signedPdfContent = new Buffer(restRes.body.signedPdf, 'base64');
-			var filename = uuid.v4() + '.pdf';
-			var appDataPath = appRoot + '/public/app-data/';
-			if (!fs.existsSync(appDataPath)){
-				fs.mkdirSync(appDataPath);
-			}
-			fs.writeFileSync(appDataPath + filename, signedPdfContent);
+            // Set the token
+			signatureFinisher.setToken(signatureParams.token);
 
-			res.render('pades-signature-complete', {
-				signedFileName: filename,
-				signerCert: restRes.body.certificate
+			// Set the signature
+			signatureFinisher.setSignatureRaw(signature);
+
+            // Call the finishAsync() method, which finalizes the signature process
+			signatureFinisher.finishAsync().then(function(signedPdf) {
+
+                // Get information about the certificate used by the user to sign the file. This method must only be called
+                // after calling the finish() method.
+                var signerCert = signatureFinisher.getCertificateInfo();
+
+                // At this point, you'd typically store the signed PDF on your database. For demonstration purposes, we'll
+                // store the PDF on a temporary folder publicly accessible and render a link to it.
+                var filename = uuid.v4() + '.pdf';
+                var appDataPath = appRoot + '/public/app-data/';
+                if (!fs.existsSync(appDataPath)){
+                    fs.mkdirSync(appDataPath);
+                }
+                fs.writeFileSync(appDataPath + filename, signedPdf);
+
+                // Render the signature completed page
+                res.render('pades-signature-complete', {
+                    signedFileName: filename,
+                    signerCert: signerCert
+                });
+
+			}).catch(function(error) {
+				next(error);
 			});
-			
-		}
-	}
 
+        }).catch(function(error) {
+            next(error);
+        });
+
+    }).catch(function(error) {
+        next(error);
+    });
 });
 
 module.exports = router;

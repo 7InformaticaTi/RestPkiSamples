@@ -31,11 +31,11 @@ router.get('/', function (req, res, next) {
     signatureStarter.setToSignElementId('NFe35141214314050000662550010001084271182362300');
 
     // Set the signature policy
-    signatureStarter.setSignaturePolicyId(StandardSignaturePolicies.pkiBrazilNFePadraoNacional);
+    signatureStarter.setSignaturePolicy(StandardSignaturePolicies.pkiBrazilNFePadraoNacional);
 
     // Optionally, set a SecurityContext to be used to determine trust in the certificate chain. Since we're using the
     // pkiBrazilNFePadraoNacional policy, the security context will default to PKI Brazil (ICP-Brasil)
-    //signatureStarter.setSecurityContextId(StandardSecurityContexts.pkiBrazil);
+    // signatureStarter.setSecurityContext(StandardSecurityContexts.pkiBrazil);
     // Note: By changing the SecurityContext above you can accept only certificates from a custom PKI for tests.
 
     // Call the startWithWebPkiAsync() method, which initiates the signature. This yields the token, a 43-character
@@ -60,9 +60,8 @@ router.get('/', function (req, res, next) {
             userfile: req.query.userfile
         });
 
-    }).catch(function(err, data) {
-        next(err);
-        console.warn(data);
+    }).catch(function(error) {
+        next(error);
     });
 });
 
@@ -88,7 +87,7 @@ router.post('/', function (req, res, next) {
 
         // Get information about the certificate used by the user to sign the file. This method must only be called after
         // calling the finish() method.
-        var signerCert = signatureFinisher.getCertificate();
+        var signerCert = signatureFinisher.getCertificateInfo();
 
         // At this point, you'd typically store the signed PDF on your database. For demonstration purposes, we'll
         // store the PDF on a temporary folder publicly accessible and render a link to it.
@@ -105,9 +104,8 @@ router.post('/', function (req, res, next) {
             signerCert: signerCert
         });
 
-    }).catch(function(err, data) {
-        next(err);
-        console.warn(data.message);
+    }).catch(function(error) {
+        next(error);
     });
 });
 

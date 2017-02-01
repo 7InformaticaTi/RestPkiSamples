@@ -34,38 +34,31 @@ router.get('/', function(req, res, next) {
 			case 1:
 				// Example #1: automatic positioning on footnote. This will insert the signature, and future signatures,
 				// ordered as a footnote of the last page of the document
-				return new Promise(function(resolve) {
-                    PadesVisualPositioningPresets.getFootnote(client.getRestPkiClient())
-					.then(function(visualPosition) {
-						resolve(visualPosition);
-					});
-				});
+				return PadesVisualPositioningPresets.getFootnote(client.getRestPkiClient());
 
 			case 2:
 				// Example #2: get the footnote positioning preset and customize it
-				return new Promise(function(resolve) {
+				return new Promise(function(resolve, reject) {
                     PadesVisualPositioningPresets.getFootnote(client.getRestPkiClient())
 					.then(function(visualPosition) {
 						visualPosition.auto.container.left = 2.54;
 						visualPosition.auto.container.bottom = 2.54;
 						visualPosition.auto.container.right = 2.54;
+
 						resolve(visualPosition);
+					}).catch(function(error) {
+						reject(error);
 					});
 				});
 
 			case 3:
 				// Example #3: automatic positioning on new page. This will insert the signature, and future signatures,
 				// in a new page appended to the end of the document.
-				return new Promise(function(resolve) {
-					PadesVisualPositioningPresets.getNewPage(client.getRestPkiClient())
-					.then(function(visualPosition) {
-                        resolve(visualPosition);
-                    });
-                });
+				return PadesVisualPositioningPresets.getNewPage(client.getRestPkiClient());
 
 			case 4:
 				// Example #4: get the "new page" positioning preset and customize it
-				return new Promise(function(resolve) {
+				return new Promise(function(resolve, reject) {
 					PadesVisualPositioningPresets.getNewPage(client.getRestPkiClient())
 					.then(function(visualPosition) {
 						visualPosition.auto.container.left = 2.54;
@@ -73,8 +66,11 @@ router.get('/', function(req, res, next) {
 						visualPosition.auto.container.right = 2.54;
 						visualPosition.auto.signatureRectangleSize.width = 5;
 						visualPosition.auto.signatureRectangleSize.height = 3;
+
 						resolve(visualPosition);
-                    });
+                    }).catch(function(error) {
+                    	reject(error);
+					});
                 });
 
 			case 5:
@@ -139,18 +135,25 @@ router.get('/', function(req, res, next) {
 	// argument will contain the filename under the "public/app-data" folder. Otherwise (signature with server file),
 	// we'll sign a sample document.
 	if (req.query.userfile) {
-		signatureStarter.setPdfFileToSign('/public/app-data/' + req.query.userfile);
+		signatureStarter.setPdfToSignFromPath('/public/app-data/' + req.query.userfile);
 	} else {
-		signatureStarter.setPdfFileToSign('/public/SampleDocument.pdf');
+		signatureStarter.setPdfToSignFromPath('/public/SampleDocument.pdf');
 	}
 
     // Set the signature policy
-	signatureStarter.setSignaturePolicyId(StandardSignaturePolicies.padesBasic);
+	signatureStarter.setSignaturePolicy(StandardSignaturePolicies.padesBasicWithPkiBrazilCerts);
 
-    // Set a SecurityContext to be used to determine trust in the certificate chain
-	signatureStarter.setSecurityContextId(StandardSecurityContexts.pkiBrazil);
-    // Note: By changing the SecurityContext above you can accept only certificates from a certain PKI, for instance,
-	// ICP-Brasil (restPki.StandardSecurityContexts.pkiBrazil).
+    // Alternative option: add a ICP-Brasil timestamp to the signature
+    // signatureStarter.setSignaturePolicy(StandardSignaturePolicies.padesTWithPkiBrazilCerts);
+
+    // Alternative option: PAdES Basic with PKIs trusted by Windows
+    // signatureStarter.setSignaturePolicy(StandardSignaturePolicies.padesBasic);
+    // signatureStarter.setSignaturePolicy(StandardSecurityContexts.windowsServer);
+
+    // Alternative option: PAdES Basic with a custom security context containting, for instance, your private PKI
+	// certificate
+	// signatureStarter.setSignaturePolicy(StandardSignaturePolicies.padesBasic);
+    // signatureStarter.setSecurityContext('ID OF YOUR CUSTOM SECURITY CONTEXT');
 
 	var visualRepresentation = {
 
@@ -219,14 +222,12 @@ router.get('/', function(req, res, next) {
                 userfile: req.query.userfile
             });
 
-		}).catch(function(err, data) {
-			next(err);
-			console.warn(data.message);
+		}).catch(function(error) {
+			next(error);
 		});
 
-	}).catch(function(err, data) {
-		next(err);
-		console.warn(data.message);
+	}).catch(function(error) {
+		next(error);
 	});
 });
 
@@ -252,7 +253,7 @@ router.post('/', function(req, res, next) {
 
         // Get information about the certificate used by the user to sign the file. This method must only be called
 		// after calling the finish() method.
-		var signerCert = signatureFinisher.getCertificate();
+		var signerCert = signatureFinisher.getCertificateInfo();
 
         // At this point, you'd typically store the signed PDF on your database. For demonstration purposes, we'll
 		// store the PDF on a temporary folder publicly accessible and render a link to it.
@@ -269,9 +270,8 @@ router.post('/', function(req, res, next) {
             signerCert: signerCert
         });
 
-    }).catch(function(err, data) {
-    	next(err);
-    	console.warn(data.message);
+    }).catch(function(error) {
+    	next(error);
 	});
 });
 
