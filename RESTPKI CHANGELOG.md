@@ -1,6 +1,85 @@
 Lacuna Rest PKI change log
 ==========================
 
+1.12.5 (2017-05-11)
+-------------------
+
+Database model update: No
+
+- Add optional app setting DefaultTimestampTimeout to customize the default timeout when requesting timestamps
+- Improve performance logs
+- Update Lacuna PKI SDK to 1.16.7 to improve download logs
+
+
+1.12.4 (2017-05-05)
+-------------------
+
+Database model update: No
+
+- Fix bug that caused execution privileges over the site's folder to be required from the application
+
+
+1.12.3 (2017-05-04)
+-------------------
+
+Database model update: No
+
+- Fix bug on configuration of setting "Is on premises"
+- Fix bug on hint of setting "Cryptographic keys"
+- Fix bug on open/validate XML signatures API
+
+
+1.12.2 (2017-04-26)
+-------------------
+
+Database model update: No
+
+- Fix bug on certificate authentication with Web PKI
+
+
+1.12.1 (2017-04-26)
+-------------------
+
+Database model update: No
+
+- Fix bug on application startup that could cause double processing of background jobs
+
+
+1.12.0 (2017-04-25)
+-------------------
+
+Database model update: **Yes**
+
+- Add support for issuing timestamps through the REST API
+- Add new API to open/validate XML signatures
+- Add optional instrumentation with Application Insights
+- Add optional app setting "AutoUpdateDatabase" to control whether the application will attempt to auto-update the database
+- Add optional app setting "AllowInsecureMaintenance" to allow remote access to maintenance pages through HTTP
+- Fix various issues occurring when running multiple instances of the application (high availability scenarios)
+- Fix database concurrency issues occurring on high load situations
+- Fix bug that occurred when the license for the Lacuna PKI SDK was changed
+- Update Lacuna PKI SDK to 1.16.6
+
+
+1.11.4 (2017-03-16)
+-------------------
+
+Database model update: No
+
+- Update Lacuna PKI SDK to 1.16.5, thus:
+	- Updated ICP-Brasil intermediate CAs
+	- Changes on CAdES signature inspection to deal with incorrectly encoded timestamps
+
+
+1.11.3 (2017-02-13)
+-------------------
+
+Database model update: No
+
+- Alter XML policy "Nota Fiscal Eletrônica (NF-e)" to exclude signature elements IDs
+- Update Lacuna PKI SDK to 1.16.2
+	
+
 1.11.2 (2017-01-20)
 -------------------
 

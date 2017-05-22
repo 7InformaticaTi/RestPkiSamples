@@ -11,6 +11,7 @@ Choose one of the following programming languages to see the available sample pr
 * [C#](CSharp/)
 * [Python](Python/)
 * [Node.js](NodeJS/)
+* [Ruby](Ruby/)
 
 To run the samples, you will need an **API access token**. If you don't have one, register on the
 [REST PKI website](https://pki.rest/) and generate a token.
@@ -19,5 +20,6 @@ See also
 --------
 
 * [Rest PKI website](https://pki.rest/)
+* [Rest PKI changelog](https://github.com/LacunaSoftware/RestPkiSamples/blob/master/RESTPKI%20CHANGELOG.md)
 * [Lacuna Software website](https://www.lacunasoftware.com/)
 * [Test certificates](TestCertificates.md)
